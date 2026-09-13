@@ -1,0 +1,25 @@
+name: Build Kitserver6 addon
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Win32 Release
+        run: cmake -S kitserver6-addon -B build-addon -A Win32 -DCMAKE_BUILD_TYPE=Release
+      - name: Build addon
+        run: cmake --build build-addon --config Release --parallel
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Copy-Item build-addon/Release/PESModKitserverCompat.asi artifact/PESModKitserverCompat.asi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PESMod-Kitserver6-Addon
+          path: artifact/*
