@@ -1,0 +1,24 @@
+name: Build native PNG kits
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Win32 Release
+        run: cmake -S native-kit-png -B build-kits -A Win32 -DCMAKE_BUILD_TYPE=Release
+      - name: Build Win32 Release
+        run: cmake --build build-kits --config Release --parallel
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Copy-Item build-kits/Release/PESModKits.asi artifact/PESModKits.asi
+          Copy-Item include/MinHook/lib/MinHook.x86.dll artifact/MinHook.x86.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PESModKits-Win32-Release
+          path: artifact/*
