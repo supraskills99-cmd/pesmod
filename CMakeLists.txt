@@ -40,7 +40,7 @@ set(SOURCES
     src/hooks/club_hooks_slots.cpp
     src/hooks/club_hooks_menu.cpp
     src/hooks/club_hooks_screen.cpp
-    src/hooks/club_hooks_kit_data.cpp
+    src/hooks/club_hooks_kit_data_fixed.cpp
     src/hooks/club_hooks_squad_data.cpp
     src/hooks/club_hooks_panel_destroy.cpp
     src/hooks/club_hooks_panel.cpp
@@ -60,7 +60,7 @@ set(SOURCES
 # ── Build as shared library ───────────────────────────────────────────────
 add_library(PESMod SHARED ${SOURCES})
  
-# ── Include paths ────────────────────────────────────────────────────────
+# ── Include paths ─────────────────────────────────────────────────────────
 target_include_directories(PESMod PRIVATE
     src
     include
@@ -104,7 +104,7 @@ else()
         "Pass -DGAME_DIR=<game folder> to enable it.")
 endif()
  
-# ── Compiler flags ───────────────────────────────────────────────────────
+# ── Compiler flags ────────────────────────────────────────────────────────
 target_compile_definitions(PESMod PRIVATE
     WIN32
     _WINDOWS
