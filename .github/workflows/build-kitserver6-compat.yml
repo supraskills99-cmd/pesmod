@@ -1,0 +1,30 @@
+name: Build Kitserver6 compatibility
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Win32 Release
+        run: cmake -S . -B build -A Win32 -DGAME_DIR="Z:/__PESMOD_NO_AUTODEPLOY__"
+
+      - name: Build PESMod
+        run: cmake --build build --config Release --parallel
+
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Copy-Item build/Release/PESMod.asi artifact/PESMod.asi
+          Copy-Item include/MinHook/lib/MinHook.x86.dll artifact/MinHook.x86.dll
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PESMod-Kitserver6-Compat
+          path: artifact/*
