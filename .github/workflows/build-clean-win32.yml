@@ -1,0 +1,50 @@
+name: Build PESMod Win32
+
+on:
+  push:
+    branches:
+      - build-clean-20260913
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Win32 Release
+        shell: cmd
+        run: cmake -S . -B build -A Win32 -DGAME_DIR="Z:/PES6_NOT_PRESENT"
+
+      - name: Build Release
+        shell: cmd
+        run: cmake --build build --config Release
+
+      - name: Prepare install package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\PESMod | Out-Null
+          Copy-Item build\Release\PESMod.asi dist\PESMod\PESMod.asi
+          Copy-Item include\MinHook\lib\MinHook.x86.dll dist\PESMod\MinHook.x86.dll
+          Copy-Item PESMod.ini dist\PESMod\PESMod.ini
+          New-Item -ItemType Directory -Force -Path dist\PESMod\leagues | Out-Null
+          New-Item -ItemType Directory -Force -Path dist\PESMod\teams | Out-Null
+          New-Item -ItemType Directory -Force -Path dist\PESMod\kits | Out-Null
+          New-Item -ItemType Directory -Force -Path dist\PESMod\squad | Out-Null
+          New-Item -ItemType Directory -Force -Path dist\PESMod\player | Out-Null
+          @'
+          INSTALACION PESMod
+          =================
+          1. Copiar PESMod.asi, MinHook.x86.dll y PESMod.ini junto a pes6.exe.
+          2. Copiar tambien las carpetas leagues, teams, kits, squad y player.
+          3. PES 6 necesita un ASI Loader para cargar PESMod.asi.
+          4. Al iniciar, PESMod.log debe aparecer junto a pes6.exe si cargo correctamente.
+          '@ | Set-Content -Encoding ASCII dist\PESMod\LEEME.txt
+
+      - name: Upload compiled package
+        uses: actions/upload-artifact@v4
+        with:
+          name: PESMod-Win32-Release
+          path: dist/PESMod
+          if-no-files-found: error
+          retention-days: 7
