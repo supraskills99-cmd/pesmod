@@ -1,0 +1,113 @@
+diff --git a/src/hooks/club_hooks_kit_data.cpp b/src/hooks/club_hooks_kit_data.cpp
+index ef17611..d3bd5a4 100644
+--- a/src/hooks/club_hooks_kit_data.cpp
++++ b/src/hooks/club_hooks_kit_data.cpp
+@@ -66,6 +66,7 @@
+ #include <mutex>
+ #include <cstdio>
+ #include <cstdlib>
++#include <cstring>
+ 
+ // =============================================================================
+ // Game globals used by the kit pipeline
+@@ -642,6 +643,79 @@ bool IniExists(const char* path)
+ // Populate one variant slot inside `buf` from the INI section. Slot is
+ // pre-filled with default scaffolding (zero colors, default model bytes,
+ // edited=1) before this is called; only present keys override.
++// Optional prototype bridge for graphical kits.
++//
++// `graphic_source_team` lets a custom team borrow the complete native kit
++// records of an existing stock/licensed team. This is intentionally a first
++// validation step before loading external PNGs: if a custom team ID can render
++// a donor team's stock graphic with Kitserver disabled, then our B/C descriptor
++// pipeline and PreloadTeamKitGraphics path are wired correctly.
++//
++// Keys per [variantN]:
++//   graphic_source_team    = <decimal/hex team id>
++//   graphic_source_variant = <0..3>   ; optional, defaults to N
++//   kit_graphic_id         = <0..255> ; optional low-level override of extraC+3
++//
++// The donor copy happens BEFORE normal INI overrides, so shirt/shorts/socks
++// colours and model bytes can still be overridden afterwards.
++void PopulateNativeGraphicSourceFromIni(KitCacheEntry& entry, int variantIdx,
++                                        const char* iniPath, const char* section)
++{
++    char val[64];
++    int donorVariant = variantIdx;
++
++    if (ReadIniString(iniPath, section, "graphic_source_variant", val, sizeof(val))) {
++        char* endp = nullptr;
++        long parsed = std::strtol(val, &endp, 0);
++        if (endp != val && parsed >= 0 && parsed < static_cast<long>(KIT_VARIANT_COUNT))
++            donorVariant = static_cast<int>(parsed);
++    }
++
++    if (ReadIniString(iniPath, section, "graphic_source_team", val, sizeof(val))) {
++        char* endp = nullptr;
++        unsigned long parsed = std::strtoul(val, &endp, 0);
++        if (endp != val && parsed <= 0xFFFFu) {
++            const uint16_t donorTeam = static_cast<uint16_t>(parsed);
++            uint8_t* donorMain = RE_GetTeamKitData(donorTeam, donorVariant);
++            uint8_t* donorB    = RE_GetTeamKitDataB(donorTeam, donorVariant);
++            uint8_t* donorC    = RE_GetTeamKitDataC(donorTeam, donorVariant);
++
++            if (donorMain)
++                std::memcpy(entry.buffer.data() + variantIdx * KIT_RECORD_SIZE,
++                            donorMain, KIT_RECORD_SIZE);
++            if (donorB)
++                std::memcpy(entry.extraB.data() + variantIdx * KIT_EXTRA_B_RECORD_SIZE,
++                            donorB, KIT_EXTRA_B_RECORD_SIZE);
++            if (donorC)
++                std::memcpy(entry.extraC.data() + variantIdx * KIT_EXTRA_C_RECORD_SIZE,
++                            donorC, KIT_EXTRA_C_RECORD_SIZE);
++
++            const uint8_t graphicId =
++                entry.extraC[variantIdx * KIT_EXTRA_C_RECORD_SIZE + 3];
++            Logger::Log(
++                "[KitData] native graphic donor: dstVariant=%d donorTeam=%u "
++                "donorVariant=%d main=%s B=%s C=%s graphicId=%u",
++                variantIdx, static_cast<unsigned>(donorTeam), donorVariant,
++                donorMain ? "yes" : "no", donorB ? "yes" : "no",
++                donorC ? "yes" : "no", static_cast<unsigned>(graphicId));
++        }
++    }
++
++    // Expert/debug escape hatch: override the byte consumed at extraC+3 by
++    // PreloadTeamKitGraphics. This is deliberately only a byte; it is NOT the
++    // full AFS file id (e.g. 5473).
++    if (ReadIniString(iniPath, section, "kit_graphic_id", val, sizeof(val))) {
++        char* endp = nullptr;
++        unsigned long parsed = std::strtoul(val, &endp, 0);
++        if (endp != val && parsed <= 0xFFu) {
++            entry.extraC[variantIdx * KIT_EXTRA_C_RECORD_SIZE + 3] =
++                static_cast<uint8_t>(parsed);
++            Logger::Log("[KitData] variant=%d explicit kit_graphic_id=%u",
++                        variantIdx, static_cast<unsigned>(parsed));
++        }
++    }
++}
++
+ void PopulateVariantFromIni(KitBuffer& buf, int variantIdx,
+                              const char* iniPath, const char* section)
+ {
+@@ -735,13 +809,15 @@ static KitCacheEntry* EnsureKitCacheEntry(uint16_t teamID)
+     if (IniExists(iniPath)) {
+         for (int v = 0; v < static_cast<int>(KIT_VARIANT_COUNT); ++v)
+             InitVariantDefaults(entry.buffer, v);
++
++        // First copy an optional native donor record (main + extra-B + extra-C).
++        // This proves that custom team IDs can drive PES6's own graphical-kit
++        // pipeline without Kitserver. Normal INI keys are applied afterwards.
++        for (int v = 0; v < static_cast<int>(KIT_VARIANT_COUNT); ++v)
++            PopulateNativeGraphicSourceFromIni(entry, v, iniPath, VariantSection(v));
++
+         for (int v = 0; v < static_cast<int>(KIT_VARIANT_COUNT); ++v)
+             PopulateVariantFromIni(entry.buffer, v, iniPath, VariantSection(v));
+-        // extra-B and extra-C stay all-zero. Their +3 byte (the kit-graphic
+-        // resource ID read by PreloadTeamKitGraphics) is therefore zero,
+-        // which causes the preloader to skip this variant cleanly. When
+-        // we extend the INI format with kit_graphic_id keys, populate
+-        // extraC[v*0x30 + 3] from there.
+         entry.loaded = true;
+         Logger::Log("[KitData] Loaded custom kit config for teamID=%u from %s",
+                     teamID, iniPath);
