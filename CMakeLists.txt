@@ -40,7 +40,7 @@ set(SOURCES
     src/hooks/club_hooks_slots.cpp
     src/hooks/club_hooks_menu.cpp
     src/hooks/club_hooks_screen.cpp
-    src/hooks/club_hooks_kit_data.cpp
+    src/hooks/club_hooks_kitserver_compat.cpp
     src/hooks/club_hooks_squad_data.cpp
     src/hooks/club_hooks_panel_destroy.cpp
     src/hooks/club_hooks_panel.cpp
