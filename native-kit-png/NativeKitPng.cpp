@@ -1,328 +1,263 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
-#include <wincodec.h>
 #include <cstdint>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <vector>
-#include <algorithm>
 #include <mutex>
 
 #include "../include/MinHook/include/MinHook.h"
 
 namespace {
 
-constexpr uint32_t ADDR_BUILD_KIT_TEXTURE = 0x00954B80;
-constexpr uint32_t ADDR_SETUP             = 0x00967EF0;
-constexpr uint32_t ADDR_REGISTER_TEXTURE  = 0x00953660;
-constexpr uint32_t ADDR_RESOLVE_TEXTURE   = 0x00953630;
-constexpr uint32_t ADDR_GAME_ALLOC        = 0x0045BC00;
-constexpr uint32_t ADDR_GAME_FREE         = 0x0045BC50;
-constexpr uint32_t CALL_SETUP[4]          = {0x00968051,0x00968073,0x00968091,0x009680AF};
+// PES6 retail addresses verified against Kitserver 6.8.x source.
+constexpr uint32_t ADDR_WRITE_KIT_INFO  = 0x00865380;
+constexpr uint32_t ADDR_PROCESS_KIT     = 0x008D1A60;
+constexpr uint32_t ADDR_REGISTER_TEX    = 0x00953660;
+constexpr uint32_t ADDR_SETUP           = 0x00967EF0;
+constexpr uint32_t CALL_SETUP[4]        = {0x00968051,0x00968073,0x00968091,0x009680AF};
+constexpr uint32_t TEAM_ID_TABLE        = 0x03BE0940;
+constexpr uint16_t TARGET_TEAM          = 251;
 
-constexpr int KIT_W = 512;
-constexpr int KIT_H = 256;
-constexpr uint32_t SYNTH_BASE = 0x00E20000;
+using FN_WriteKitInfo  = uint32_t (__cdecl*)(uint32_t,uint32_t);
+using FN_ProcessKit    = uint32_t (__cdecl*)(uint32_t,uint32_t);
+using FN_RegisterTex   = uint32_t* (__cdecl*)(uint32_t);
+using FN_KitSetup      = void (__cdecl*)(uint32_t,uint32_t,uint32_t,uint32_t);
+
+FN_WriteKitInfo g_origWriteKitInfo = nullptr;
+FN_ProcessKit   g_origProcessKit = nullptr;
+FN_RegisterTex  g_origRegisterTex = nullptr;
+const auto g_nativeKitSetup = reinterpret_cast<FN_KitSetup>(ADDR_SETUP);
 
 HMODULE g_self = nullptr;
 HANDLE g_log = INVALID_HANDLE_VALUE;
 std::mutex g_logMutex;
-volatile LONG g_activeTeam = -1;
-volatile LONG g_buildLogCount = 0;
-
-using FN_BuildKitTexture = uint32_t (__cdecl*)(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t);
-using FN_KitSetup        = void (__cdecl*)(uint32_t,uint32_t,uint32_t,uint32_t);
-using FN_RegisterTexture = uint32_t* (__cdecl*)(uint32_t);
-using FN_ResolveTexture  = uint32_t* (__cdecl*)(int);
-using FN_GameAlloc       = uint32_t* (__cdecl*)(int,int);
-using FN_GameFree        = void (__cdecl*)(uint32_t*);
-
-FN_BuildKitTexture g_origBuildKitTexture = nullptr;
-const auto g_nativeKitSetup = reinterpret_cast<FN_KitSetup>(ADDR_SETUP);
-const auto RegisterTexture  = reinterpret_cast<FN_RegisterTexture>(ADDR_REGISTER_TEXTURE);
-const auto ResolveTexture   = reinterpret_cast<FN_ResolveTexture>(ADDR_RESOLVE_TEXTURE);
-const auto GameAlloc        = reinterpret_cast<FN_GameAlloc>(ADDR_GAME_ALLOC);
-const auto GameFree         = reinterpret_cast<FN_GameFree>(ADDR_GAME_FREE);
-
-struct RGBA { uint8_t r,g,b,a; };
-
-const wchar_t* VariantName(int v)
-{
-    static const wchar_t* names[4] = {L"ga",L"pa",L"gb",L"pb"};
-    return (v >= 0 && v < 4) ? names[v] : L"";
-}
+volatile LONG g_setupTeam = -1;
+volatile LONG g_writeCount = 0;
+volatile LONG g_processCount = 0;
+volatile LONG g_registerCount = 0;
 
 void OpenLog()
 {
-    char p[MAX_PATH] = {};
-    if (!GetModuleFileNameA(g_self,p,MAX_PATH)) return;
-    char* s = strrchr(p,'\\');
-    if (!s) s = strrchr(p,'/');
-    if (s) *(s+1)=0; else p[0]=0;
-    strncat_s(p,"PESModKits.log",_TRUNCATE);
-    g_log = CreateFileA(p,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,
+    char path[MAX_PATH] = {};
+    if (!GetModuleFileNameA(g_self,path,MAX_PATH)) return;
+    char* s = strrchr(path,'\\');
+    if (!s) s = strrchr(path,'/');
+    if (s) *(s+1)=0; else path[0]=0;
+    strncat_s(path,"PESModKits.log",_TRUNCATE);
+    g_log = CreateFileA(path,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,
                         CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
 }
 
-void Log(const char* f,...)
+void Log(const char* fmt,...)
 {
     if (g_log == INVALID_HANDLE_VALUE) return;
-    char b[1024];
-    va_list a; va_start(a,f);
-    _vsnprintf_s(b,sizeof(b),_TRUNCATE,f,a);
-    va_end(a);
+    char buf[1400];
+    va_list ap; va_start(ap,fmt);
+    _vsnprintf_s(buf,sizeof(buf),_TRUNCATE,fmt,ap);
+    va_end(ap);
     std::lock_guard<std::mutex> lock(g_logMutex);
     DWORD w=0;
-    WriteFile(g_log,b,(DWORD)strlen(b),&w,nullptr);
+    WriteFile(g_log,buf,(DWORD)strlen(buf),&w,nullptr);
     WriteFile(g_log,"\r\n",2,&w,nullptr);
     FlushFileBuffers(g_log);
 }
 
-void GetBaseDir(wchar_t (&out)[MAX_PATH])
+bool IsReadable(const void* p,size_t need)
+{
+    if (!p) return false;
+    MEMORY_BASIC_INFORMATION mbi{};
+    if (VirtualQuery(p,&mbi,sizeof(mbi)) != sizeof(mbi)) return false;
+    if (mbi.State != MEM_COMMIT || (mbi.Protect & PAGE_GUARD) || (mbi.Protect & PAGE_NOACCESS)) return false;
+    const uintptr_t begin = reinterpret_cast<uintptr_t>(p);
+    const uintptr_t end = reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
+    return begin + need <= end;
+}
+
+void GetCurrentTeams(uint16_t& home,uint16_t& away)
+{
+    home=away=0xFFFF;
+    __try {
+        auto* t = reinterpret_cast<volatile uint16_t*>(TEAM_ID_TABLE);
+        home=t[0]; away=t[1];
+    } __except(EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+bool TargetOnScreen()
+{
+    uint16_t h,a; GetCurrentTeams(h,a);
+    return h==TARGET_TEAM || a==TARGET_TEAM || g_setupTeam==TARGET_TEAM;
+}
+
+void Dump16(const void* p,char (&out)[80])
 {
     out[0]=0;
-    if (!GetModuleFileNameW(g_self,out,MAX_PATH)) return;
-    wchar_t* s = wcsrchr(out,L'\\');
-    if (!s) s = wcsrchr(out,L'/');
-    if (s) *(s+1)=0; else out[0]=0;
-}
-
-void MakeKitPath(uint16_t team,int variant,wchar_t (&out)[MAX_PATH])
-{
-    wchar_t base[MAX_PATH]; GetBaseDir(base);
-    _snwprintf_s(out,MAX_PATH,_TRUNCATE,L"%skits\\%u\\%s.png",
-                 base,(unsigned)team,VariantName(variant));
-}
-
-bool FileExists(const wchar_t* p)
-{
-    DWORD a=GetFileAttributesW(p);
-    return a!=INVALID_FILE_ATTRIBUTES && !(a&FILE_ATTRIBUTE_DIRECTORY);
-}
-
-bool HasVariantPng(uint16_t team,int variant)
-{
-    wchar_t p[MAX_PATH]; MakeKitPath(team,variant,p);
-    return FileExists(p);
-}
-
-bool HasAnyKitPng(uint16_t team)
-{
-    for(int v=0;v<4;++v) if(HasVariantPng(team,v)) return true;
-    return false;
-}
-
-inline int SwzIndex(int x,int y,int w)
-{
-    const int block=(y&~0xf)*w+(x&~0xf)*2;
-    const int swap=(((y+2)>>2)&1)*4;
-    const int ypos=(((y&~3)>>1)+(y&1))&7;
-    const int col=ypos*w*2+((x+swap)&7)*4;
-    return block+col+((y>>1)&1)+((x>>2)&2);
-}
-
-void ClutSwap(uint8_t* p)
-{
-    for(int b=0;b<256;b+=32)
-        for(int k=0;k<8;++k)
-            for(int c=0;c<4;++c)
-                std::swap(p[(b+8+k)*4+c],p[(b+16+k)*4+c]);
-}
-
-void MedianCut(const std::vector<RGBA>& px,std::vector<RGBA>& pal,std::vector<uint8_t>& idx)
-{
-    std::vector<std::vector<int>> boxes(1);
-    boxes[0].resize(px.size());
-    for(size_t i=0;i<px.size();++i) boxes[0][i]=(int)i;
-
-    auto range=[&](const std::vector<int>& box,int& axis)->int {
-        uint8_t mn[4]={255,255,255,255},mx[4]={0,0,0,0};
-        for(int i:box){
-            const uint8_t* v=&px[i].r;
-            for(int c=0;c<4;++c){mn[c]=std::min(mn[c],v[c]);mx[c]=std::max(mx[c],v[c]);}
-        }
-        int best=0; axis=0;
-        for(int c=0;c<4;++c){int r=mx[c]-mn[c];if(r>best){best=r;axis=c;}}
-        return best;
-    };
-
-    while(boxes.size()<256){
-        int bi=-1,br=-1,ba=0;
-        for(size_t k=0;k<boxes.size();++k){
-            if(boxes[k].size()<2) continue;
-            int a=0,r=range(boxes[k],a);
-            if(r>br){br=r;bi=(int)k;ba=a;}
-        }
-        if(bi<0) break;
-        auto box=std::move(boxes[bi]);
-        boxes.erase(boxes.begin()+bi);
-        std::sort(box.begin(),box.end(),[&](int a,int b){return (&px[a].r)[ba]<(&px[b].r)[ba];});
-        size_t m=box.size()/2;
-        boxes.emplace_back(box.begin(),box.begin()+m);
-        boxes.emplace_back(box.begin()+m,box.end());
+    if (!IsReadable(p,16)) { strcpy_s(out,"<unreadable>"); return; }
+    const uint8_t* b = reinterpret_cast<const uint8_t*>(p);
+    size_t pos=0;
+    for (int i=0;i<16 && pos+4<sizeof(out);++i) {
+        int n=_snprintf_s(out+pos,sizeof(out)-pos,_TRUNCATE,"%02X%s",b[i],i==15?"":" ");
+        if (n<0) break;
+        pos += static_cast<size_t>(n);
     }
-
-    pal.assign(256,RGBA{0,0,0,0});
-    idx.assign(px.size(),0);
-    for(size_t k=0;k<boxes.size()&&k<256;++k){
-        const auto& box=boxes[k];
-        if(box.empty()) continue;
-        uint64_t s[4]={0,0,0,0};
-        for(int i:box){s[0]+=px[i].r;s[1]+=px[i].g;s[2]+=px[i].b;s[3]+=px[i].a;}
-        uint64_t n=box.size();
-        pal[k]=RGBA{(uint8_t)(s[0]/n),(uint8_t)(s[1]/n),(uint8_t)(s[2]/n),(uint8_t)(s[3]/n)};
-        for(int i:box) idx[i]=(uint8_t)k;
-    }
-}
-
-bool DecodeKitPng(const wchar_t* path,std::vector<RGBA>& out)
-{
-    HRESULT init=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
-    bool did=SUCCEEDED(init);
-    IWICImagingFactory* f=nullptr;
-    IWICBitmapDecoder* d=nullptr;
-    IWICBitmapFrameDecode* fr=nullptr;
-    IWICFormatConverter* c=nullptr;
-    bool ok=false;
-
-    do {
-        if(FAILED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&f)))) break;
-        if(FAILED(f->CreateDecoderFromFilename(path,nullptr,GENERIC_READ,WICDecodeMetadataCacheOnDemand,&d))) break;
-        if(FAILED(d->GetFrame(0,&fr))) break;
-        UINT w=0,h=0;
-        if(FAILED(fr->GetSize(&w,&h))) break;
-        if(w!=KIT_W||h!=KIT_H){Log("[CustomKitPNG] rejected PNG: expected 512x256, got %ux%u",w,h);break;}
-        if(FAILED(f->CreateFormatConverter(&c))) break;
-        if(FAILED(c->Initialize(fr,GUID_WICPixelFormat32bppRGBA,WICBitmapDitherTypeNone,nullptr,0.0,WICBitmapPaletteTypeCustom))) break;
-        out.resize((size_t)KIT_W*KIT_H);
-        if(FAILED(c->CopyPixels(nullptr,KIT_W*4,(UINT)out.size()*4,reinterpret_cast<BYTE*>(out.data())))) break;
-        ok=true;
-    } while(false);
-
-    if(c)c->Release(); if(fr)fr->Release(); if(d)d->Release(); if(f)f->Release(); if(did)CoUninitialize();
-    return ok;
-}
-
-uint32_t BuildAndRegister(uint16_t team,int variant)
-{
-    wchar_t path[MAX_PATH]; MakeKitPath(team,variant,path);
-    if(!FileExists(path)) return 0;
-
-    const int displayId=(int)(SYNTH_BASE+(uint32_t)team*4u+(uint32_t)variant);
-    if(uint32_t* existing=ResolveTexture(displayId)) return reinterpret_cast<uint32_t>(existing);
-
-    std::vector<RGBA> rgba;
-    if(!DecodeKitPng(path,rgba)){Log("[CustomKitPNG] decode failed team=%u variant=%d",team,variant);return 0;}
-    std::vector<RGBA> pal; std::vector<uint8_t> idx; MedianCut(rgba,pal,idx);
-
-    const int blobSize=0x80+1024+KIT_W*KIT_H;
-    uint8_t* blob=reinterpret_cast<uint8_t*>(GameAlloc(1,blobSize));
-    if(!blob){Log("[CustomKitPNG] allocation failed team=%u variant=%d",team,variant);return 0;}
-    memset(blob,0,blobSize);
-
-    auto W32=[&](int off,uint32_t v){*reinterpret_cast<uint32_t*>(blob+off)=v;};
-    W32(0x00,0x29857294); W32(0x04,1); W32(0x08,(uint32_t)blobSize); W32(0x0C,(uint32_t)displayId);
-    W32(0x10,0x00800480); W32(0x14,(uint32_t)KIT_W|((uint32_t)KIT_H<<16));
-    blob[0x18]=0x02; blob[0x19]=0x13; blob[0x1A]=9; blob[0x1B]=8;
-    W32(0x1C,0x10100001); W32(0x20,(uint32_t)((KIT_W*KIT_H)/16)); W32(0x24,0x40);
-    W32(0x28,(uint32_t)(KIT_W/2)|((uint32_t)(KIT_H/2)<<16));
-    const uint32_t lo2c=(KIT_W>>7)?(uint32_t)(KIT_W>>7):1u;
-    const uint32_t hi2c=((KIT_W*KIT_H)>>13)?(uint32_t)((KIT_W*KIT_H)>>13):1u;
-    W32(0x2C,lo2c|(hi2c<<16));
-
-    uint8_t* ppal=blob+0x80;
-    for(int i=0;i<256;++i){RGBA q=pal[i];int a=(q.a+1)/2;if(a>128)a=128;ppal[i*4]=q.r;ppal[i*4+1]=q.g;ppal[i*4+2]=q.b;ppal[i*4+3]=(uint8_t)a;}
-    ClutSwap(ppal);
-    uint8_t* pix=blob+0x480;
-    for(int y=0;y<KIT_H;++y) for(int x=0;x<KIT_W;++x) pix[SwzIndex(x,y,KIT_W)]=idx[y*KIT_W+x];
-
-    uint32_t* node=RegisterTexture(reinterpret_cast<uint32_t>(blob));
-    if(!node){node=ResolveTexture(displayId);if(!node)GameFree(reinterpret_cast<uint32_t*>(blob));}
-    Log("[CustomKitPNG] register team=%u variant=%d display=0x%X node=%p",team,variant,displayId,node);
-    return reinterpret_cast<uint32_t>(node);
 }
 
 bool ValidateCall(uint32_t site,uint32_t expected)
 {
     uint8_t* p=reinterpret_cast<uint8_t*>(site);
-    __try{if(p[0]!=0xE8)return false;int32_t rel=*reinterpret_cast<int32_t*>(p+1);return(uint32_t)(p+5+rel)==expected;}
-    __except(EXCEPTION_EXECUTE_HANDLER){return false;}
+    __try {
+        if (p[0]!=0xE8) return false;
+        int32_t rel=*reinterpret_cast<int32_t*>(p+1);
+        return reinterpret_cast<uint32_t>(p+5+rel)==expected;
+    } __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 bool PatchCall(uint32_t site,uint32_t expected,void* hook)
 {
-    if(!ValidateCall(site,expected)){Log("[CustomKitPNG] ERROR setup call 0x%08X mismatch",site);return false;}
-    uint8_t* p=reinterpret_cast<uint8_t*>(site);DWORD old=0;
-    if(!VirtualProtect(p,5,PAGE_EXECUTE_READWRITE,&old)) return false;
-    *reinterpret_cast<int32_t*>(p+1)=(int32_t)(reinterpret_cast<uint8_t*>(hook)-(p+5));
-    DWORD dummy=0;VirtualProtect(p,5,old,&dummy);FlushInstructionCache(GetCurrentProcess(),p,5);return true;
-}
-
-uint32_t __cdecl HookBuildKitTexture(uint32_t token,uint32_t a2,uint32_t a3,uint32_t a4,uint32_t a5)
-{
-    LONG t=g_activeTeam;
-    if(token>=0x733E&&token<=0x7341){
-        LONG n=InterlockedIncrement(&g_buildLogCount);
-        if(n<=64) Log("[CustomKitPNG] BUILD token=0x%X variant=%u activeTeam=%ld a2=%u a3=0x%X a4=0x%X a5=0x%X",token,token-0x733E,t,a2,a3,a4,a5);
-        if(t>=0&&t<=0xFFFF){
-            int variant=(int)(token-0x733E);
-            if(HasVariantPng((uint16_t)t,variant)){
-                uint32_t node=BuildAndRegister((uint16_t)t,variant);
-                if(node){Log("[CustomKitPNG] APPLIED team=%ld variant=%d (%ls) node=0x%08X",t,variant,VariantName(variant),node);return node;}
-                Log("[CustomKitPNG] custom build failed team=%ld variant=%d; stock fallback",t,variant);
-            }
-        }
+    if (!ValidateCall(site,expected)) {
+        Log("[TRACE] setup callsite 0x%08X mismatch; leaving it untouched",site);
+        return false;
     }
-    return g_origBuildKitTexture?g_origBuildKitTexture(token,a2,a3,a4,a5):0;
+    uint8_t* p=reinterpret_cast<uint8_t*>(site);
+    DWORD old=0;
+    if (!VirtualProtect(p,5,PAGE_EXECUTE_READWRITE,&old)) return false;
+    *reinterpret_cast<int32_t*>(p+1)=static_cast<int32_t>(reinterpret_cast<uint8_t*>(hook)-(p+5));
+    DWORD dummy=0; VirtualProtect(p,5,old,&dummy);
+    FlushInstructionCache(GetCurrentProcess(),p,5);
+    return true;
 }
 
 void __cdecl KitSetupProxy(uint32_t team,uint32_t a2,uint32_t a3,uint32_t a4)
 {
-    LONG prev=g_activeTeam;
-    if(team<=0xFFFF&&HasAnyKitPng((uint16_t)team)){
-        g_activeTeam=(LONG)team;
-        Log("[CustomKitPNG] setup team=%u a2=%u a3=%u a4=%u",team,a2,a3,a4);
-    } else g_activeTeam=-1;
+    LONG prev=g_setupTeam;
+    g_setupTeam=(team<=0xFFFF)?static_cast<LONG>(team):-1;
+    if ((team & 0xFFFF)==TARGET_TEAM)
+        Log("[TRACE251] SETUP team=%u a2=%u a3=%u a4=%u",team,a2,a3,a4);
     g_nativeKitSetup(team,a2,a3,a4);
-    g_activeTeam=prev;
+    g_setupTeam=prev;
+}
+
+uint32_t __cdecl HookWriteKitInfo(uint32_t teamId,uint32_t kitOrdinal)
+{
+    const uint16_t tid=static_cast<uint16_t>(teamId & 0xFFFF);
+    uint16_t h,a; GetCurrentTeams(h,a);
+    LONG n=InterlockedIncrement(&g_writeCount);
+    const bool important=(tid==TARGET_TEAM || h==TARGET_TEAM || a==TARGET_TEAM || g_setupTeam==TARGET_TEAM);
+    if (important || n<=80)
+        Log("[%s] WRITEKIT #%ld rawTeam=0x%08X team=%u ordinal=%u current=%u/%u setup=%ld",
+            important?"TRACE251":"TRACE",n,teamId,tid,kitOrdinal,h,a,g_setupTeam);
+
+    uint32_t result=g_origWriteKitInfo?g_origWriteKitInfo(teamId,kitOrdinal):0;
+    if (important) {
+        char bytes[80];
+        const void* probe = result>=0xF8 ? reinterpret_cast<const void*>(result-0xF8) : nullptr;
+        Dump16(probe,bytes);
+        Log("[TRACE251] WRITEKIT result=0x%08X probe(result-0xF8)=%s",result,bytes);
+    }
+    return result;
+}
+
+uint32_t __cdecl HookProcessKit(uint32_t dest,uint32_t src)
+{
+    uint16_t h,a; GetCurrentTeams(h,a);
+    LONG n=InterlockedIncrement(&g_processCount);
+    const bool important=TargetOnScreen();
+    if (important || n<=120) {
+        char sb[80]; Dump16(reinterpret_cast<const void*>(src),sb);
+        Log("[%s] PROCESS #%ld dest=0x%08X src=0x%08X current=%u/%u setup=%ld src16=%s",
+            important?"TRACE251":"TRACE",n,dest,src,h,a,g_setupTeam,sb);
+    }
+    uint32_t result=g_origProcessKit?g_origProcessKit(dest,src):0;
+    if (important)
+        Log("[TRACE251] PROCESS result=0x%08X",result);
+    return result;
+}
+
+uint32_t* __cdecl HookRegisterTexture(uint32_t blob)
+{
+    LONG n=InterlockedIncrement(&g_registerCount);
+    const bool important=TargetOnScreen();
+    uint32_t magic=0,id=0,wh=0,size=0;
+    __try {
+        if (IsReadable(reinterpret_cast<void*>(blob),0x18)) {
+            magic=*reinterpret_cast<uint32_t*>(blob+0x00);
+            size =*reinterpret_cast<uint32_t*>(blob+0x08);
+            id   =*reinterpret_cast<uint32_t*>(blob+0x0C);
+            wh   =*reinterpret_cast<uint32_t*>(blob+0x14);
+        }
+    } __except(EXCEPTION_EXECUTE_HANDLER) {}
+    if (important || n<=80) {
+        uint16_t h,a; GetCurrentTeams(h,a);
+        Log("[%s] REGTEX #%ld blob=0x%08X magic=0x%08X id=0x%08X size=0x%X wh=%ux%u current=%u/%u setup=%ld",
+            important?"TRACE251":"TRACE",n,blob,magic,id,size,wh&0xFFFF,(wh>>16)&0xFFFF,h,a,g_setupTeam);
+    }
+    return g_origRegisterTex?g_origRegisterTex(blob):nullptr;
+}
+
+bool InstallHook(void* target,void* hook,void** orig,const char* name)
+{
+    MH_STATUS st=MH_CreateHook(target,hook,orig);
+    if (st!=MH_OK && st!=MH_ERROR_ALREADY_CREATED) {
+        Log("[TRACE] MH_CreateHook(%s)=%d",name,st); return false;
+    }
+    st=MH_EnableHook(target);
+    if (st!=MH_OK && st!=MH_ERROR_ENABLED) {
+        Log("[TRACE] MH_EnableHook(%s)=%d",name,st); return false;
+    }
+    Log("[TRACE] hooked %s at %p",name,target);
+    return true;
 }
 
 bool Install()
 {
-    for(uint32_t s:CALL_SETUP) if(!ValidateCall(s,ADDR_SETUP)){Log("[CustomKitPNG] ERROR setup call 0x%08X validation; untouched",s);return false;}
-
     MH_STATUS st=MH_Initialize();
-    if(st!=MH_OK&&st!=MH_ERROR_ALREADY_INITIALIZED){Log("[CustomKitPNG] ERROR MH_Initialize=%d",st);return false;}
-    st=MH_CreateHook(reinterpret_cast<void*>(ADDR_BUILD_KIT_TEXTURE),reinterpret_cast<void*>(&HookBuildKitTexture),reinterpret_cast<void**>(&g_origBuildKitTexture));
-    if(st!=MH_OK&&st!=MH_ERROR_ALREADY_CREATED){Log("[CustomKitPNG] ERROR MH_CreateHook(BuildKitTexture)=%d",st);return false;}
-    st=MH_EnableHook(reinterpret_cast<void*>(ADDR_BUILD_KIT_TEXTURE));
-    if(st!=MH_OK&&st!=MH_ERROR_ENABLED){Log("[CustomKitPNG] ERROR MH_EnableHook(BuildKitTexture)=%d",st);return false;}
+    if (st!=MH_OK && st!=MH_ERROR_ALREADY_INITIALIZED) {
+        Log("[TRACE] MH_Initialize=%d",st); return false;
+    }
 
-    for(uint32_t s:CALL_SETUP) if(!PatchCall(s,ADDR_SETUP,reinterpret_cast<void*>(&KitSetupProxy))) return false;
-    Log("[CustomKitPNG] v0.3 installed. Direct BuildKitTexture hook active. PESMod.asi untouched.");
-    return true;
+    bool ok=true;
+    ok &= InstallHook(reinterpret_cast<void*>(ADDR_WRITE_KIT_INFO),reinterpret_cast<void*>(&HookWriteKitInfo),reinterpret_cast<void**>(&g_origWriteKitInfo),"WriteKitInfo/0x865380");
+    ok &= InstallHook(reinterpret_cast<void*>(ADDR_PROCESS_KIT),reinterpret_cast<void*>(&HookProcessKit),reinterpret_cast<void**>(&g_origProcessKit),"ProcessKit/0x8D1A60");
+    ok &= InstallHook(reinterpret_cast<void*>(ADDR_REGISTER_TEX),reinterpret_cast<void*>(&HookRegisterTexture),reinterpret_cast<void**>(&g_origRegisterTex),"RegisterTexture/0x953660");
+
+    for (uint32_t s:CALL_SETUP) {
+        if (!PatchCall(s,ADDR_SETUP,reinterpret_cast<void*>(&KitSetupProxy)))
+            Log("[TRACE] setup proxy not installed at 0x%08X",s);
+    }
+
+    Log("[TRACE] TEST6 installed ok=%d. Using Kitserver-verified WriteKitInfo + ProcessKit pipeline. PESMod.asi untouched.",ok?1:0);
+    return ok;
 }
 
 DWORD WINAPI Worker(void*)
 {
-    OpenLog();Log("PESModKits v0.3 starting");
+    OpenLog();
+    Log("PESModKits TEST6 v0.4 starting");
     bool ready=false;
-    for(int i=0;i<600;++i){
-        HMODULE m=GetModuleHandleA("PESMod.asi");if(!m)m=GetModuleHandleA("PESMod(7).asi");
-        __try{if(m&&*reinterpret_cast<volatile uint8_t*>(0x00865240)==0xE9){ready=true;break;}}__except(EXCEPTION_EXECUTE_HANDLER){}
+    for (int i=0;i<600;++i) {
+        HMODULE m=GetModuleHandleA("PESMod.asi");
+        if (!m) m=GetModuleHandleA("PESMod(7).asi");
+        __try {
+            if (m && *reinterpret_cast<volatile uint8_t*>(0x00865240)==0xE9) { ready=true; break; }
+        } __except(EXCEPTION_EXECUTE_HANDLER) {}
         Sleep(100);
     }
-    if(!ready){Log("[CustomKitPNG] ERROR PESMod hook not detected; game untouched");return 0;}
-    Install();return 0;
+    if (!ready) { Log("[TRACE] PESMod hook not detected; game untouched"); return 0; }
+    Install();
+    return 0;
 }
 
 } // namespace
 
 BOOL APIENTRY DllMain(HMODULE h,DWORD reason,LPVOID)
 {
-    if(reason==DLL_PROCESS_ATTACH){g_self=h;DisableThreadLibraryCalls(h);HANDLE th=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);if(th)CloseHandle(th);}
-    else if(reason==DLL_PROCESS_DETACH){if(g_log!=INVALID_HANDLE_VALUE){CloseHandle(g_log);g_log=INVALID_HANDLE_VALUE;}}
+    if (reason==DLL_PROCESS_ATTACH) {
+        g_self=h; DisableThreadLibraryCalls(h);
+        HANDLE th=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);
+        if (th) CloseHandle(th);
+    } else if (reason==DLL_PROCESS_DETACH) {
+        if (g_log!=INVALID_HANDLE_VALUE) { CloseHandle(g_log); g_log=INVALID_HANDLE_VALUE; }
+    }
     return TRUE;
 }
