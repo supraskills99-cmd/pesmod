@@ -1,0 +1,36 @@
+name: Build uploaded PESMod Win32
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply uploaded native-kit patch
+        shell: pwsh
+        run: git apply build_input/native-kit.patch
+
+      - name: Configure Win32 Release
+        shell: pwsh
+        run: cmake -S . -B build -A Win32 -DGAME_DIR="Z:/__no_pes6_deploy__"
+
+      - name: Build Win32 Release
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Collect build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/Release/PESMod.asi dist/PESMod.asi
+          Copy-Item include/MinHook/lib/MinHook.x86.dll dist/MinHook.x86.dll
+          Copy-Item PESMod.ini dist/PESMod.ini
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PESMod-Win32-Release
+          path: dist/*
