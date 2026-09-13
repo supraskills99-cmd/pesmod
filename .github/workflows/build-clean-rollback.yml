@@ -1,0 +1,24 @@
+name: Build clean rollback Win32
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Win32 Release
+        run: cmake -S . -B build -A Win32 -DCMAKE_BUILD_TYPE=Release
+      - name: Build Win32 Release
+        run: cmake --build build --config Release
+      - name: Collect build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item build/Release/PESMod.asi artifact/PESMod.asi
+          Copy-Item include/MinHook/lib/MinHook.x86.dll artifact/MinHook.x86.dll
+          Copy-Item PESMod.ini artifact/PESMod.ini
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PESMod-clean-rollback
+          path: artifact/*
