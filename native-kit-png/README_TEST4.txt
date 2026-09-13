@@ -1,1 +1,1 @@
-TEST4: use PESModKits.asi + PESModKitsAux.asi together. PESModKitsAux primes only extraB/extraC for team 251 from a stock donor so the native graphical kit path can run. Keep kits/251/pa.png at 512x256. Kitserver disabled.
+TEST4: use PESModKits.asi + PESModKitsAux.asi together. PESModKitsAux primes only extraB/extraC for team 251 from a stock donor so the native graphical kit path can run. Keep kits/251/pa.png at 512x256. Kitserver disabled. PESMod.asi remains untouched.
