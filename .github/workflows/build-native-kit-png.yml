@@ -17,6 +17,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
           Copy-Item build-kits/Release/PESModKits.asi artifact/PESModKits.asi
+          Copy-Item build-kits/Release/PESModKitsAux.asi artifact/PESModKitsAux.asi
           Copy-Item include/MinHook/lib/MinHook.x86.dll artifact/MinHook.x86.dll
       - uses: actions/upload-artifact@v4
         with:
