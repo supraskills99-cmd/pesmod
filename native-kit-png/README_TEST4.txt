@@ -1,1 +1,4 @@
-TEST4: use PESModKits.asi + PESModKitsAux.asi together. PESModKitsAux primes only extraB/extraC for team 251 from a stock donor so the native graphical kit path can run. Keep kits/251/pa.png at 512x256. Kitserver disabled. PESMod.asi remains untouched.
+TEST5 - stock donor scanner
+
+PESModKitsAux.asi now scans stock team IDs 0..220 and selects a donor whose extraC+3 is nonzero for variant1 (pa).
+Use alongside PESModKits.asi v0.3 and the user's known-good PESMod.asi.
