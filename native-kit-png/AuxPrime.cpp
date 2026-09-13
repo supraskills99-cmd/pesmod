@@ -3,13 +3,14 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cstdarg>
 
 namespace {
 
 constexpr uint32_t ADDR_GET_B = 0x00865380;
 constexpr uint32_t ADDR_GET_C = 0x00865430;
 constexpr uint16_t TARGET_TEAM = 251;
-constexpr uint16_t DONORS[] = {203, 64, 6};
+constexpr uint16_t SCAN_MAX_TEAM = 220;
 
 using FN_GetExtra = uint8_t* (__cdecl*)(uint16_t, int);
 const auto GetB = reinterpret_cast<FN_GetExtra>(ADDR_GET_B);
@@ -77,6 +78,16 @@ bool GetAll(uint16_t team, uint8_t* b[4], uint8_t* c[4])
     return true;
 }
 
+int ScoreDonor(uint8_t* c[4])
+{
+    // pa.png is variant 1, so make a nonzero C+3 there mandatory/high priority.
+    if (c[1][3] == 0) return -1;
+    int score = 100;
+    for (int v = 0; v < 4; ++v)
+        if (c[v][3] != 0) ++score;
+    return score;
+}
+
 bool PrimeOnce()
 {
     uint8_t* dstB[4]{}; uint8_t* dstC[4]{};
@@ -84,40 +95,64 @@ bool PrimeOnce()
     for (int v = 0; v < 4; ++v)
         if (!IsWritable(dstB[v], 0x18) || !IsWritable(dstC[v], 0x30)) return false;
 
-    for (uint16_t donor : DONORS) {
+    int bestScore = -1;
+    int bestTeam = -1;
+    uint8_t* bestB[4]{}; uint8_t* bestC[4]{};
+    int candidatesLogged = 0;
+
+    for (uint16_t donor = 0; donor <= SCAN_MAX_TEAM; ++donor) {
+        if (donor == TARGET_TEAM) continue;
         uint8_t* srcB[4]{}; uint8_t* srcC[4]{};
         if (!GetAll(donor, srcB, srcC)) continue;
 
-        bool useful = false;
-        for (int v = 0; v < 4; ++v)
-            if (srcB[v][3] != 0 || srcC[v][3] != 0) useful = true;
-        if (!useful) continue;
-
-        __try {
-            for (int v = 0; v < 4; ++v) {
-                Log("[AuxPrime] before dst team=%u v=%d B2=%02X B3=%02X C2=%02X C3=%02X | donor=%u B2=%02X B3=%02X C2=%02X C3=%02X",
-                    TARGET_TEAM, v, dstB[v][2], dstB[v][3], dstC[v][2], dstC[v][3],
-                    donor, srcB[v][2], srcB[v][3], srcC[v][2], srcC[v][3]);
-                memcpy(dstB[v], srcB[v], 0x18);
-                memcpy(dstC[v], srcC[v], 0x30);
-                Log("[AuxPrime] after  dst team=%u v=%d B2=%02X B3=%02X C2=%02X C3=%02X",
-                    TARGET_TEAM, v, dstB[v][2], dstB[v][3], dstC[v][2], dstC[v][3]);
-            }
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
-            Log("[AuxPrime] exception while copying donor=%u", donor);
-            return false;
+        const bool anyC3 = srcC[0][3] || srcC[1][3] || srcC[2][3] || srcC[3][3];
+        if (anyC3 && candidatesLogged < 32) {
+            Log("[AuxScan] team=%u B3=%02X/%02X/%02X/%02X C3=%02X/%02X/%02X/%02X",
+                donor,
+                srcB[0][3], srcB[1][3], srcB[2][3], srcB[3][3],
+                srcC[0][3], srcC[1][3], srcC[2][3], srcC[3][3]);
+            ++candidatesLogged;
         }
 
-        Log("[AuxPrime] SUCCESS target=%u donor=%u. Only extraB/extraC were copied.", TARGET_TEAM, donor);
-        return true;
+        int score = ScoreDonor(srcC);
+        if (score > bestScore) {
+            bestScore = score;
+            bestTeam = donor;
+            for (int v = 0; v < 4; ++v) { bestB[v] = srcB[v]; bestC[v] = srcC[v]; }
+        }
     }
-    return false;
+
+    if (bestTeam < 0) {
+        Log("[AuxScan] NO DONOR FOUND with extraC[variant1][3] != 0 in team range 0..%u", SCAN_MAX_TEAM);
+        return false;
+    }
+
+    Log("[AuxScan] SELECTED donor=%d score=%d C3=%02X/%02X/%02X/%02X",
+        bestTeam, bestScore, bestC[0][3], bestC[1][3], bestC[2][3], bestC[3][3]);
+
+    __try {
+        for (int v = 0; v < 4; ++v) {
+            Log("[AuxPrime] before dst team=%u v=%d B2=%02X B3=%02X C2=%02X C3=%02X | donor=%d B2=%02X B3=%02X C2=%02X C3=%02X",
+                TARGET_TEAM, v, dstB[v][2], dstB[v][3], dstC[v][2], dstC[v][3],
+                bestTeam, bestB[v][2], bestB[v][3], bestC[v][2], bestC[v][3]);
+            memcpy(dstB[v], bestB[v], 0x18);
+            memcpy(dstC[v], bestC[v], 0x30);
+            Log("[AuxPrime] after  dst team=%u v=%d B2=%02X B3=%02X C2=%02X C3=%02X",
+                TARGET_TEAM, v, dstB[v][2], dstB[v][3], dstC[v][2], dstC[v][3]);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("[AuxPrime] exception while copying donor=%d", bestTeam);
+        return false;
+    }
+
+    Log("[AuxPrime] SUCCESS target=%u donor=%d. Only extraB/extraC were copied.", TARGET_TEAM, bestTeam);
+    return true;
 }
 
 DWORD WINAPI Worker(void*)
 {
     OpenLog();
-    Log("PESModKitsAux v0.1 starting");
+    Log("PESModKitsAux v0.2 TEST5 starting - scanning stock teams for nonzero extraC+3");
 
     bool ready = false;
     for (int i = 0; i < 600; ++i) {
@@ -137,10 +172,10 @@ DWORD WINAPI Worker(void*)
     for (int attempt = 1; attempt <= 240; ++attempt) {
         if (PrimeOnce()) return 0;
         if (attempt == 1 || attempt % 20 == 0)
-            Log("[AuxPrime] waiting for writable custom/donor kit records, attempt=%d", attempt);
+            Log("[AuxPrime] waiting/scanning, attempt=%d", attempt);
         Sleep(250);
     }
-    Log("[AuxPrime] FAILED: records never became available");
+    Log("[AuxPrime] FAILED: no usable graphical donor became available");
     return 0;
 }
 
