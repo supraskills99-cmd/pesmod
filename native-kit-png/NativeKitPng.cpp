@@ -1,4 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
 #include <wincodec.h>
 #include <cstdint>
@@ -42,7 +43,29 @@ bool ReplaceBlobFromPng(uint8_t*b,uint16_t t,int v){if(!LooksLikeKitBlob(b)||!Ha
 bool ValidateCall(uint32_t s,uint32_t e){uint8_t*p=(uint8_t*)s;__try{if(p[0]!=0xE8)return false;int32_t r=*(int32_t*)(p+1);return(uint32_t)(p+5+r)==e;}__except(EXCEPTION_EXECUTE_HANDLER){return false;}}
 bool PatchCall(uint32_t s,uint32_t e,void*h){if(!ValidateCall(s,e)){Log("[CustomKitPNG] ERROR callsite 0x%08X mismatch",s);return false;}uint8_t*p=(uint8_t*)s;DWORD o=0;if(!VirtualProtect(p,5,PAGE_EXECUTE_READWRITE,&o))return false;*(int32_t*)(p+1)=(int32_t)((uint8_t*)h-(p+5));DWORD q;VirtualProtect(p,5,o,&q);FlushInstructionCache(GetCurrentProcess(),p,5);return true;}
 uint32_t __cdecl HookPreload(){volatile uint16_t*ids=(volatile uint16_t*)TEAM_IDS_ADDR;uint16_t a=ids[0],b=ids[1];bool ca=HasAnyKitPng(a),cb=HasAnyKitPng(b);if(ca)ids[0]=DONOR_TEAM;if(cb)ids[1]=DONOR_TEAM;if(ca||cb)Log("[CustomKitPNG] preload proxy home=%u%s away=%u%s donor=%u",a,ca?"*":"",b,cb?"*":"",DONOR_TEAM);uint32_t r=g_origPreload?g_origPreload():0;ids[0]=a;ids[1]=b;return r;}
-extern "C" __declspec(naked) void KitContextProxy(){__asm{mov eax,g_activeTeam cmp eax,-1 je passthrough movzx edx,bx cmp edx,eax jne passthrough push ebx mov bx,6 mov eax,ADDR_INIT_KIT_CONTEXT call eax pop ebx ret passthrough: mov eax,ADDR_INIT_KIT_CONTEXT call eax ret}}
+
+extern "C" __declspec(naked) void KitContextProxy()
+{
+    __asm {
+        mov eax, g_activeTeam
+        cmp eax, -1
+        je passthrough
+        movzx edx, bx
+        cmp edx, eax
+        jne passthrough
+        push ebx
+        mov bx, 6
+        mov eax, ADDR_INIT_KIT_CONTEXT
+        call eax
+        pop ebx
+        ret
+    passthrough:
+        mov eax, ADDR_INIT_KIT_CONTEXT
+        call eax
+        ret
+    }
+}
+
 void __cdecl KitPostProxy(uint32_t t,uint32_t a2,uint32_t a3){if(g_activeTeam>=0&&t==(uint32_t)g_activeTeam)g_nativeKitPost(DONOR_TEAM,a2,a3);else g_nativeKitPost(t,a2,a3);}
 uint32_t __cdecl BuildVariantProxy(uint32_t tok,uint32_t a2,uint32_t a3,uint32_t a4,uint32_t a5){LONG pv=g_activeVariant,pd=g_replacedThisBuild;if(g_activeTeam>=0&&tok>=0x733e&&tok<=0x7341){g_activeVariant=(LONG)(tok-0x733e);g_replacedThisBuild=0;}uint32_t r=g_nativeBuildKitTexture(tok,a2,a3,a4,a5);g_activeVariant=pv;g_replacedThisBuild=pd;return r;}
 void __cdecl KitSetupProxy(uint32_t t,uint32_t a2,uint32_t a3,uint32_t a4){LONG pt=g_activeTeam;if(t<=0xffff&&HasAnyKitPng((uint16_t)t)){g_activeTeam=(LONG)t;Log("[CustomKitPNG] setup team=%u using donor=%u",t,DONOR_TEAM);}g_nativeKitSetup(t,a2,a3,a4);g_activeTeam=pt;}
