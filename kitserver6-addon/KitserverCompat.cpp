@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cstdarg>
 
 #include "MinHook.h"
 
@@ -190,8 +191,6 @@ bool KitserverLoaded()
 
 bool ShouldUseNative(uint16_t id)
 {
-    // The exact PES6 club band that contains PESMod's custom Racing 251.
-    // Keep this deliberately narrow so all other PESMod behaviour stays intact.
     return id >= 0xDD && id < 0xFE;
 }
 
