@@ -53,11 +53,12 @@ repl(r'''void SeedRacingProxyIdentityOnce()
     if (g_racingProxyIdentitySeeded) return;
     g_racingProxyIdentitySeeded = true;
 
-    // Never write through pointers returned by GetTeamName(): PES does not
-    // guarantee those are writable or large enough. Keep Racing's visible
-    // identity in PESMod and proxy only native editable team/squad/kit data.
-    EnsureRacingEditProxyReady();
-    Logger::Log("[EditProxy] Racing 251 native data proxy ready; custom identity preserved");
+    // Do NOT seed/overwrite backing 203 during ordinary team-name or badge
+    // lookups. That happens very early while PES is still building menus and
+    // proved unsafe with custom 0x8000+ player IDs. Keep identity entirely in
+    // PESMod here; native backing is initialized lazily only when a real squad
+    // or Edit-mode data accessor for team 251 needs it.
+    Logger::Log("[EditProxy] Racing 251 identity ready; native backing seed deferred");
 }
 ''', 'SeedRacingProxyIdentityOnce')
 
@@ -110,4 +111,4 @@ repl(r'''    if (teamId == RACING_EDIT_REAL_TEAM) {
 ''', '', 'ComputeBadgeSlot Racing remap')
 
 p.write_text(s, encoding='utf-8')
-print('Racing EditProxy crash fix applied safely')
+print('Racing EditProxy lazy-seed crash fix applied safely')
