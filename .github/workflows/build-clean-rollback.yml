@@ -1,4 +1,4 @@
-name: Build Stock Maccingami 251 Test
+name: Build Wakame 73 Native Test
 on:
   push:
     branches: [ chatgpt/racing-editproxy-persist-20260915 ]
@@ -9,7 +9,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply full PESMod source patch
+      - name: Apply PESMod patch and Wakame test
         shell: bash
         run: |
           base64 -d editproxy_main.patch.xz.b64 | xz -dc > editproxy_main.patch
@@ -18,15 +18,14 @@ jobs:
           python editproxy_crashfix.py
           python native251_hidden_team.py
           python native251_strict_stock.py
-          python native251_maccingami_stockleague.py
-      - name: Verify pure stock Maccingami test
+          python native252_wakame_argentina.py
+      - name: Verify native Wakame 252 test
         shell: bash
         run: |
-          echo '--- stock Maccingami checks ---'
-          grep -n "Native251Test" src/hooks/club_hooks_slots.cpp
-          grep -n "teamId == 251" src/hooks/custom_team_loader.cpp src/hooks/custom_logo_loader.cpp || true
-          grep -n "teamID == 251u" src/hooks/club_hooks_squad_data.cpp || true
-          grep -n "teamID == 251" src/hooks/club_hooks_kit_data.cpp || true
+          echo '--- Wakame 252 checks ---'
+          grep -n "Native252Test" src/hooks/club_hooks_leagues.cpp
+          grep -n "teamID == 252" src/hooks/club_hooks_kit_data.cpp src/hooks/club_hooks_squad_data.cpp || true
+          grep -n "teamId == 252" src/hooks/custom_team_loader.cpp src/hooks/custom_logo_loader.cpp || true
       - name: Configure Win32 Release
         run: cmake -S . -B build -A Win32 -DCMAKE_BUILD_TYPE=Release
       - name: Build Win32 Release
@@ -38,5 +37,5 @@ jobs:
           Copy-Item build/Release/PESMod.asi artifact/PESMod.asi
       - uses: actions/upload-artifact@v4
         with:
-          name: PESMod-Stock-Maccingami251-Test
+          name: PESMod-Wakame73-Native252-LigaArgentina
           path: artifact/*
