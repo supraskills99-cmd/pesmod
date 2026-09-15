@@ -1,4 +1,4 @@
-name: Build Native Hidden Team 251 Strict
+name: Build Stock Maccingami 251 Test
 on:
   push:
     branches: [ chatgpt/racing-editproxy-persist-20260915 ]
@@ -18,11 +18,13 @@ jobs:
           python editproxy_crashfix.py
           python native251_hidden_team.py
           python native251_strict_stock.py
-      - name: Verify strict stock 251 bypass
+          python native251_maccingami_stockleague.py
+      - name: Verify pure stock Maccingami test
         shell: bash
         run: |
-          echo '--- strict stock 251 checks ---'
-          grep -n "if (teamId == 251)" src/hooks/custom_team_loader.cpp src/hooks/custom_logo_loader.cpp || true
+          echo '--- stock Maccingami checks ---'
+          grep -n "Native251Test" src/hooks/club_hooks_slots.cpp
+          grep -n "teamId == 251" src/hooks/custom_team_loader.cpp src/hooks/custom_logo_loader.cpp || true
           grep -n "teamID == 251u" src/hooks/club_hooks_squad_data.cpp || true
           grep -n "teamID == 251" src/hooks/club_hooks_kit_data.cpp || true
       - name: Configure Win32 Release
@@ -36,5 +38,5 @@ jobs:
           Copy-Item build/Release/PESMod.asi artifact/PESMod.asi
       - uses: actions/upload-artifact@v4
         with:
-          name: PESMod-Racing-NativeHidden251-STRICT
+          name: PESMod-Stock-Maccingami251-Test
           path: artifact/*
