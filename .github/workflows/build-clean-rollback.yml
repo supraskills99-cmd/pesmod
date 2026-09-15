@@ -1,4 +1,4 @@
-name: Build clean rollback Win32
+name: Build Racing EditProxy Win32
 on:
   pull_request:
     branches: [ main ]
@@ -7,6 +7,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Apply full-source EditProxy overlay
+        shell: pwsh
+        run: |
+          Expand-Archive -Path racing_editproxy_overlay.zip -DestinationPath overlay -Force
+          Copy-Item overlay/src/hooks/* src/hooks/ -Force
       - name: Configure Win32 Release
         run: cmake -S . -B build -A Win32 -DCMAKE_BUILD_TYPE=Release
       - name: Build Win32 Release
@@ -20,5 +25,5 @@ jobs:
           Copy-Item PESMod.ini artifact/PESMod.ini
       - uses: actions/upload-artifact@v4
         with:
-          name: PESMod-clean-rollback
+          name: PESMod-Racing-EditProxy
           path: artifact/*
