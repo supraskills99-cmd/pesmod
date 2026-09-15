@@ -1,4 +1,4 @@
-name: Build Racing EditProxy Win32
+name: Build Native Hidden Team 251
 on:
   push:
     branches: [ chatgpt/racing-editproxy-persist-20260915 ]
@@ -9,13 +9,23 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply Racing EditProxy patch
+      - name: Apply full PESMod source patch
         shell: bash
         run: |
           base64 -d editproxy_main.patch.xz.b64 | xz -dc > editproxy_main.patch
           git apply --check editproxy_main.patch
           git apply editproxy_main.patch
           python editproxy_crashfix.py
+          python native251_hidden_team.py
+      - name: Verify no active 251 to 203 remap
+        shell: bash
+        run: |
+          echo '--- native 251 checks ---'
+          grep -n "teamID == 251" src/hooks/club_hooks_kit_data.cpp || true
+          grep -n "teamID == 251u" src/hooks/club_hooks_squad_data.cpp || true
+          grep -n "teamId == RACING_EDIT_REAL_TEAM" src/hooks/custom_team_loader.cpp || true
+          echo '--- residual backing references (dormant helpers are allowed) ---'
+          grep -n "RACING_EDIT_BACKING_TEAM" src/hooks/club_hooks_squad_data.cpp src/hooks/custom_team_loader.cpp || true
       - name: Configure Win32 Release
         run: cmake -S . -B build -A Win32 -DCMAKE_BUILD_TYPE=Release
       - name: Build Win32 Release
@@ -24,10 +34,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifact | Out-Null
-          Copy-Item build/Release/PESMod.asi artifact/PESMod_Racing251_EditData_CRASHFIX.asi
-          Copy-Item include/MinHook/lib/MinHook.x86.dll artifact/MinHook.x86.dll
-          Copy-Item PESMod.ini artifact/PESMod.ini
+          Copy-Item build/Release/PESMod.asi artifact/PESMod.asi
       - uses: actions/upload-artifact@v4
         with:
-          name: PESMod-Racing-EditProxy-CrashFix
+          name: PESMod-Racing-NativeHidden251
           path: artifact/*
