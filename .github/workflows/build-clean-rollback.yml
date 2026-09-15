@@ -9,9 +9,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply full-source EditProxy overlay
-        shell: cmd
-        run: tar -xf racing_editproxy_overlay.zip
+      - name: Apply Racing EditProxy patch
+        shell: bash
+        run: |
+          base64 -d editproxy_main.patch.xz.b64 | xz -dc > editproxy_main.patch
+          git apply --check editproxy_main.patch
+          git apply editproxy_main.patch
       - name: Configure Win32 Release
         run: cmake -S . -B build -A Win32 -DCMAKE_BUILD_TYPE=Release
       - name: Build Win32 Release
@@ -20,7 +23,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifact | Out-Null
-          Copy-Item build/Release/PESMod.asi artifact/PESMod.asi
+          Copy-Item build/Release/PESMod.asi artifact/PESMod_Racing251_EditData.asi
           Copy-Item include/MinHook/lib/MinHook.x86.dll artifact/MinHook.x86.dll
           Copy-Item PESMod.ini artifact/PESMod.ini
       - uses: actions/upload-artifact@v4
