@@ -1,5 +1,7 @@
 name: Build Racing EditProxy Win32
 on:
+  push:
+    branches: [ chatgpt/racing-editproxy-persist-20260915 ]
   pull_request:
     branches: [ main ]
 jobs:
