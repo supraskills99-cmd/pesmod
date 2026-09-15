@@ -1,4 +1,4 @@
-name: Build Native Hidden Team 251
+name: Build Native Hidden Team 251 Strict
 on:
   push:
     branches: [ chatgpt/racing-editproxy-persist-20260915 ]
@@ -17,15 +17,14 @@ jobs:
           git apply editproxy_main.patch
           python editproxy_crashfix.py
           python native251_hidden_team.py
-      - name: Verify no active 251 to 203 remap
+          python native251_strict_stock.py
+      - name: Verify strict stock 251 bypass
         shell: bash
         run: |
-          echo '--- native 251 checks ---'
-          grep -n "teamID == 251" src/hooks/club_hooks_kit_data.cpp || true
+          echo '--- strict stock 251 checks ---'
+          grep -n "if (teamId == 251)" src/hooks/custom_team_loader.cpp src/hooks/custom_logo_loader.cpp || true
           grep -n "teamID == 251u" src/hooks/club_hooks_squad_data.cpp || true
-          grep -n "teamId == RACING_EDIT_REAL_TEAM" src/hooks/custom_team_loader.cpp || true
-          echo '--- residual backing references (dormant helpers are allowed) ---'
-          grep -n "RACING_EDIT_BACKING_TEAM" src/hooks/club_hooks_squad_data.cpp src/hooks/custom_team_loader.cpp || true
+          grep -n "teamID == 251" src/hooks/club_hooks_kit_data.cpp || true
       - name: Configure Win32 Release
         run: cmake -S . -B build -A Win32 -DCMAKE_BUILD_TYPE=Release
       - name: Build Win32 Release
@@ -37,5 +36,5 @@ jobs:
           Copy-Item build/Release/PESMod.asi artifact/PESMod.asi
       - uses: actions/upload-artifact@v4
         with:
-          name: PESMod-Racing-NativeHidden251
+          name: PESMod-Racing-NativeHidden251-STRICT
           path: artifact/*
