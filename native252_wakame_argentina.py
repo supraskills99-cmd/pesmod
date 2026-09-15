@@ -30,20 +30,21 @@ replace_once(
 p = Path('src/hooks/club_hooks_squad_data.cpp')
 s = p.read_text(encoding='utf-8')
 
-for signature, body, label in [
-    ('uint32_t __cdecl hook_GetTeamPlayerID(uint32_t teamID, uint8_t slotIdx, int mode)\n{\n',
-     '    if (teamID == 252u)\n        return orig_GetTeamPlayerID(teamID, slotIdx, mode);\n\n',
+hooks = [
+    ('''uint32_t __cdecl hook_GetTeamPlayerID(uint32_t teamID, uint8_t slotIdx,\n                                        int mode)\n{\n''',
+     '''    if (teamID == 252u)\n        return orig_GetTeamPlayerID(teamID, slotIdx, mode);\n\n''',
      'GetTeamPlayerID 252 native'),
-    ('uint8_t __cdecl hook_GetTeamPlayerAttr(uint32_t teamID, uint32_t slotIdx, int mode)\n{\n',
-     '    if (teamID == 252u)\n        return orig_GetTeamPlayerAttr(teamID, slotIdx, mode);\n\n',
+    ('''uint8_t __cdecl hook_GetTeamPlayerAttr(uint32_t teamID, uint32_t slotIdx,\n                                         int mode)\n{\n''',
+     '''    if (teamID == 252u)\n        return orig_GetTeamPlayerAttr(teamID, slotIdx, mode);\n\n''',
      'GetTeamPlayerAttr 252 native'),
-    ('void __cdecl hook_SetTeamPlayerAttr(uint32_t teamID, uint32_t slotIdx, int mode, uint32_t value)\n{\n',
-     '    if (teamID == 252u) {\n        orig_SetTeamPlayerAttr(teamID, slotIdx, mode, value);\n        return;\n    }\n\n',
+    ('''void __cdecl hook_SetTeamPlayerAttr(uint32_t teamID, uint32_t slotIdx,\n                                      int mode, uint32_t value)\n{\n''',
+     '''    if (teamID == 252u) {\n        orig_SetTeamPlayerAttr(teamID, slotIdx, mode, value);\n        return;\n    }\n\n''',
      'SetTeamPlayerAttr 252 native'),
-    ('void __cdecl hook_SetTeamPlayerID(uint32_t teamID, uint8_t slotIdx, uint16_t playerID)\n{\n',
-     '    if (teamID == 252u) {\n        orig_SetTeamPlayerID(teamID, slotIdx, playerID);\n        return;\n    }\n\n',
+    ('''void __cdecl hook_SetTeamPlayerID(uint32_t teamID, uint8_t slotIdx,\n                                    uint16_t playerID)\n{\n''',
+     '''    if (teamID == 252u) {\n        orig_SetTeamPlayerID(teamID, slotIdx, playerID);\n        return;\n    }\n\n''',
      'SetTeamPlayerID 252 native'),
-]:
+]
+for signature, body, label in hooks:
     if signature not in s:
         raise SystemExit(f'{label}: signature not found')
     s = s.replace(signature, signature + body, 1)
