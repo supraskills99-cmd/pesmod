@@ -1,0 +1,113 @@
+diff --git a/src/hooks/custom_team_loader.cpp b/src/hooks/custom_team_loader.cpp
+--- a/src/hooks/custom_team_loader.cpp
++++ b/src/hooks/custom_team_loader.cpp
+@@ -95,45 +95,12 @@ const CustomTeam* GetCustomTeam(int teamId)
+ void SeedRacingProxyIdentityOnce()
+ {
+     if (g_racingProxyIdentitySeeded) return;
+     g_racingProxyIdentitySeeded = true;
+-
+-    const bool loadedFromNative = RacingEditProxyLoadedFromNativeSave();
+-    if (loadedFromNative) {
+-        Logger::Log("[EditProxy] Racing 251 identity preserved from native backing 203");
+-        return;
+-    }
+-
+-    const CustomTeam* racing = GetCustomTeam(RACING_EDIT_REAL_TEAM);
+-    if (racing && orig_GetTeamName) {
+-        if (char* full = orig_GetTeamName(RACING_EDIT_BACKING_TEAM, 0, 0)) {
+-            std::strncpy(full, racing->fullName, 48);
+-            full[48] = '\0';
+-        }
+-        if (char* sh = orig_GetTeamName(RACING_EDIT_BACKING_TEAM, 1, 0)) {
+-            std::strncpy(sh, racing->shortName, 5);
+-            sh[5] = '\0';
+-        }
+-    }
+-
+-    // Seed the editable emblem bank once from teams/251.png. After the first
+-    // native save, the original 203 buffers become authoritative.
+-    if (orig_GetTeamEditSlotIdx && orig_GetEmblemPaletteBySlot && orig_GetEmblemPixelsBySlot) {
+-        const int slot = orig_GetTeamEditSlotIdx(RACING_EDIT_BACKING_TEAM);
+-        const uint8_t* srcPal = nullptr;
+-        const uint8_t* srcPix = nullptr;
+-        if (slot >= 0 && GetCustomNativeEmblemData(RACING_EDIT_REAL_TEAM, &srcPal, &srcPix)) {
+-            uint8_t* dstPal = orig_GetEmblemPaletteBySlot(slot);
+-            uint8_t* dstPix = orig_GetEmblemPixelsBySlot(slot);
+-            if (dstPal && srcPal) std::memcpy(dstPal, srcPal, 0x400);
+-            if (dstPix && srcPix) std::memcpy(dstPix, srcPix, 0x1000);
+-        }
+-    }
+-    Logger::Log("[EditProxy] Racing 251 identity seeded into native backing 203");
++    // Keep Racing's visual identity owned by PESMod. Only the native team/squad/
++    // kit data is proxied through 203. Writing through GetTeamName() is unsafe:
++    // the returned pointer is not a guaranteed writable 49-byte buffer.
++    EnsureRacingEditProxyReady();
++    Logger::Log("[EditProxy] Racing 251 native data proxy ready; custom identity preserved");
+ }
+@@ -141,12 +108,15 @@ char* __cdecl hook_GetTeamName(uint16_t teamId, int nameType, int param3)
+ {
+-    if (teamId == RACING_EDIT_REAL_TEAM || teamId == RACING_EDIT_BACKING_TEAM) {
++    if (teamId == RACING_EDIT_REAL_TEAM) {
+         SeedRacingProxyIdentityOnce();
+-        return orig_GetTeamName
+-            ? orig_GetTeamName(RACING_EDIT_BACKING_TEAM, nameType, param3)
+-            : nullptr;
++        const CustomTeam* racing = GetCustomTeam(teamId);
++        if (racing) {
++            if (nameType == 0) return const_cast<char*>(racing->fullName);
++            if (nameType == 1) return const_cast<char*>(racing->shortName);
++        }
+     }
+ 
+     const CustomTeam* t = GetCustomTeam(teamId);
+@@ -175,13 +145,6 @@ char* __cdecl hook_GetTeamName(uint16_t teamId, int nameType, int param3)
+ // -----------------------------------------------------------------------------
+ int __cdecl hook_CrestResolve(int scratchId, uint16_t teamId, int p3, int p4)
+ {
+-    if (teamId == RACING_EDIT_REAL_TEAM) {
+-        SeedRacingProxyIdentityOnce();
+-        return orig_CrestResolve
+-            ? orig_CrestResolve(scratchId, RACING_EDIT_BACKING_TEAM, p3, p4)
+-            : 0;
+-    }
+-
+     const int node = RegisterCustomCrest(scratchId, teamId);
+     if (node)
+         return node;
+@@ -268,12 +231,6 @@ bool DrawCustomBadge(int nodeStruct, int teamIdRaw)
+ // FUN_00b0fa80(nodeStruct, teamId) — clean __cdecl sibling. Direct hook.
+ void __cdecl hook_BadgeRenderCdecl(int nodeStruct, int teamId)
+ {
+-    if ((teamId & 0xFFFF) == RACING_EDIT_REAL_TEAM) {
+-        SeedRacingProxyIdentityOnce();
+-        if (orig_BadgeRenderCdecl)
+-            orig_BadgeRenderCdecl(nodeStruct, RACING_EDIT_BACKING_TEAM);
+-        return;
+-    }
+     if (DrawCustomBadge(nodeStruct, teamId))
+         return;
+     if (orig_BadgeRenderCdecl)
+@@ -296,11 +253,6 @@ extern "C" __declspec(naked) void hook_BadgeRender_Naked()
+ {
+     __asm
+     {
+-        cmp  cx, 0FBh
+-        jne  not_racing_proxy
+-        mov  ecx, 0CBh
+-        jmp  dword ptr [orig_BadgeRender]
+-    not_racing_proxy:
+         push eax                        // save nodeStruct
+         push ecx                        // save teamId
+         // stack: [esp]=teamId [+4]=nodeStruct [+8]=ret [+0xC]=param_1
+@@ -335,10 +287,6 @@ namespace { int g_lastBadgeTeam = 0xFFFF; }
+ // FUN_009b0390(state, teamId) — clean __cdecl. Record the team, forward through.
+ int __cdecl hook_ComputeBadgeSlot(int state, uint16_t teamId)
+ {
+-    if (teamId == RACING_EDIT_REAL_TEAM) {
+-        SeedRacingProxyIdentityOnce();
+-        teamId = RACING_EDIT_BACKING_TEAM;
+-    }
+     g_lastBadgeTeam = teamId;
+     return orig_ComputeBadgeSlot ? orig_ComputeBadgeSlot(state, teamId) : 0;
+ }
