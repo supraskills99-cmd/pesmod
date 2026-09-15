@@ -111,10 +111,10 @@ p.write_text(s, encoding='utf-8')
 # team slot. This keeps the user's league name/logo/order otherwise unchanged.
 p = Path('src/hooks/club_hooks_leagues.cpp')
 s = p.read_text(encoding='utf-8')
-needle = '''        if (!LoadOneLeagueIni(slot, buf)) continue;\n        fn_SetTeamList(DISPLAY_HANDLE_ARR[side], slot,\n'''
-if needle not in s:
-    raise SystemExit('ApplyLeagueIniOverrides insertion point not found')
-insert = '''        if (!LoadOneLeagueIni(slot, buf)) continue;\n\n        if (slot == 17) {\n            bool placed = false;\n            for (int i = 0; i < TEAM_SLOT_COUNT; ++i) {\n                if (buf.teamIDs[i] == 251) {\n                    buf.teamIDs[i] = 252;\n                    placed = true;\n                    Logger::Log("[Native252Test] Liga Argentina: replaced team 251 with original Wakame '73 (252) at index %d", i);\n                    break;\n                }\n            }\n            if (!placed) {\n                for (int i = 0; i < TEAM_SLOT_COUNT; ++i) {\n                    if (buf.teamIDs[i] == CLUB_NULL_ID) {\n                        buf.teamIDs[i] = 252;\n                        placed = true;\n                        Logger::Log("[Native252Test] Liga Argentina: appended original Wakame '73 (252) at index %d", i);\n                        break;\n                    }\n                }\n            }\n        }\n\n        fn_SetTeamList(DISPLAY_HANDLE_ARR[side], slot,\n'''
+needle = '''        if (!LoadOneLeagueIni(slot, buf)) continue;\n'''
+if s.count(needle) != 1:
+    raise SystemExit(f'ApplyLeagueIniOverrides insertion point count={s.count(needle)}')
+insert = needle + '''\n        if (slot == 17) {\n            bool placed = false;\n            for (int i = 0; i < TEAM_SLOT_COUNT; ++i) {\n                if (buf.teamIDs[i] == 251) {\n                    buf.teamIDs[i] = 252;\n                    placed = true;\n                    Logger::Log("[Native252Test] Liga Argentina: replaced team 251 with original Wakame '73 (252) at index %d", i);\n                    break;\n                }\n            }\n            if (!placed) {\n                for (int i = 0; i < TEAM_SLOT_COUNT; ++i) {\n                    if (buf.teamIDs[i] == CLUB_NULL_ID) {\n                        buf.teamIDs[i] = 252;\n                        placed = true;\n                        Logger::Log("[Native252Test] Liga Argentina: appended original Wakame '73 (252) at index %d", i);\n                        break;\n                    }\n                }\n            }\n        }\n'''
 s = s.replace(needle, insert, 1)
 p.write_text(s, encoding='utf-8')
 
