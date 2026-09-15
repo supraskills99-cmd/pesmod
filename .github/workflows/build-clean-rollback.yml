@@ -8,10 +8,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Apply full-source EditProxy overlay
-        shell: pwsh
-        run: |
-          Expand-Archive -Path racing_editproxy_overlay.zip -DestinationPath overlay -Force
-          Copy-Item overlay/src/hooks/* src/hooks/ -Force
+        shell: cmd
+        run: tar -xf racing_editproxy_overlay.zip
       - name: Configure Win32 Release
         run: cmake -S . -B build -A Win32 -DCMAKE_BUILD_TYPE=Release
       - name: Build Win32 Release
