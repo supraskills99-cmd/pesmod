@@ -1,0 +1,54 @@
+name: Build Kitserver animated menu module
+
+on:
+  push:
+    branches:
+      - feature/kitserver-animated-menu
+  workflow_dispatch:
+
+jobs:
+  build-win32:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Kitserver 6 DirectX 8 headers
+        shell: pwsh
+        run: git clone --depth 1 https://github.com/kitserver/kitserver6.git thirdparty/kitserver6
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate test card PNGs
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pillow
+          python tools/generate_kitserver_menu_cards.py
+
+      - name: Build Win32 Kitserver module
+        shell: cmd
+        run: >-
+          cl /nologo /std:c++17 /EHsc /O2 /MD /LD
+          kitserver_module\menu_cards.cpp
+          /I thirdparty\kitserver6\src\soft\dxsdk81\include
+          /link /OUT:menucards.dll ole32.lib windowscodecs.lib user32.lib
+
+      - name: Stage test package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package\kitserver\menu_cards | Out-Null
+          Copy-Item menucards.dll package\kitserver\menucards.dll
+          Copy-Item kitserver_module\menu_cards.ini package\kitserver\menu_cards.ini
+          Copy-Item kitserver_module\INSTALL.txt package\INSTALL.txt
+          Copy-Item build_menu_cards\*.png package\kitserver\menu_cards\
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PES6-Kitserver-Animated-Menu-Test
+          path: package
