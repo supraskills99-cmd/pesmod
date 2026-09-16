@@ -39,25 +39,28 @@ jobs:
       - name: Patch V16 animated card frames
         run: python tools/patch_menu_v16.py
 
-      - name: Patch V18 sliding icon strip
+      - name: Patch V18 sliding icon strip support
         run: python tools/patch_menu_v18.py
 
       - name: Fix V18 config types
         run: python tools/patch_menu_v18_fix.py
 
-      - name: Patch V19 align icon strip with menu
+      - name: Patch V19 icon strip support
         run: python tools/patch_menu_v19.py
 
-      - name: Patch V20 clean carousel
+      - name: Patch V20 icon strip support
         run: python tools/patch_menu_v20.py
 
       - name: Patch V21 PES2011 synchronized transition
         run: python tools/patch_menu_v21.py
 
-      - name: Patch V22 PES2011 split tile reveal
+      - name: Patch V22 PES2011 upper-panel reveal
         run: python tools/patch_menu_v22.py
 
-      - name: Generate PES2011 cards and icon strip PNGs
+      - name: Patch V23 preserve original PES2011 menu bar
+        run: python tools/patch_menu_v23.py
+
+      - name: Generate PES2011 upper cards
         shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check pillow
