@@ -122,6 +122,7 @@ target_compile_definitions(PESMod PRIVATE
     WIN32
     _WINDOWS
     _USRDLL
+    NOMINMAX
     # Uncomment for debug builds:
     # PESMOD_DEBUG
 )
