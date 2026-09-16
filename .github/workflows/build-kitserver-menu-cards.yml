@@ -45,6 +45,9 @@ jobs:
       - name: Fix V18 config types
         run: python tools/patch_menu_v18_fix.py
 
+      - name: Patch V19 align icon strip with menu
+        run: python tools/patch_menu_v19.py
+
       - name: Generate PES2011 cards and icon strip PNGs
         shell: pwsh
         run: |
