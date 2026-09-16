@@ -21,6 +21,7 @@
 #include "hooks_registry.h"
 #include "player_hooks.h"
 #include "menu_hooks.h"
+#include "main_menu_cards.h"
 #include "club_hooks.h"
 #include "league_teams_hook.h"
 #include "../utils/logger.h"
@@ -35,6 +36,7 @@ void HooksRegistry::InstallAll()
     // To disable a group of hooks, comment out the relevant line.
     ClubHooks::Register();
     LeagueTeamsHook::Register();
+    MainMenuCards::Register();
 
     // Optional / experimental hook groups (disabled by default):
     // MenuHooks::Register();
@@ -45,6 +47,7 @@ void HooksRegistry::InstallAll()
  
 void HooksRegistry::RemoveAll()
 {
+    MainMenuCards::Shutdown();
     MH_DisableHook(MH_ALL_HOOKS);
     Logger::Log("[Hooks] All hooks removed.");
 }

@@ -36,6 +36,7 @@ set(SOURCES
     src/hooks/hooks_registry.cpp
     src/hooks/player_hooks.cpp
     src/hooks/menu_hooks.cpp
+    src/hooks/main_menu_cards.cpp
     src/hooks/club_hooks_set_team_list.cpp
     src/hooks/club_hooks_slots.cpp
     src/hooks/club_hooks_menu.cpp
@@ -71,6 +72,7 @@ target_link_libraries(PESMod PRIVATE
     ${CMAKE_SOURCE_DIR}/include/MinHook/lib/MinHook.x86.lib
     windowscodecs   # WIC (IWICImagingFactory) — custom logo PNG decode
     ole32           # CoCreateInstance / CoInitializeEx
+    d3d9            # animated main-menu overlay
 )
  
 # ── Output as .asi (not .dll) ────────────────────────────────────────────
@@ -98,6 +100,17 @@ if(EXISTS "${GAME_DIR}")
             "${GAME_DIR}/MinHook.x86.dll"
         COMMENT "Deploying PESMod.asi and MinHook.x86.dll to ${GAME_DIR}"
     )
+
+    if(EXISTS "${CMAKE_SOURCE_DIR}/assets/menu_cards")
+        add_custom_command(TARGET PESMod POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${GAME_DIR}/PESMod/menu_cards"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/assets/menu_cards"
+                "${GAME_DIR}/PESMod/menu_cards"
+            COMMENT "Deploying animated menu card assets to ${GAME_DIR}/PESMod/menu_cards"
+        )
+    endif()
 else()
     message(STATUS
         "PESMod: GAME_DIR '${GAME_DIR}' not found - skipping auto-deploy. "
@@ -119,5 +132,3 @@ target_compile_definitions(PESMod PRIVATE
 if(MSVC)
     target_compile_options(PESMod PRIVATE /W4 /GR- /EHsc)
 endif()
-
-
