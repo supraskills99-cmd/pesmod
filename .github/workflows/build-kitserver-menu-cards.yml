@@ -30,6 +30,9 @@ jobs:
       - name: Fix V12 WinMM config types
         run: python tools/patch_menu_v12_fix.py
 
+      - name: Patch V13 PES2011 animation
+        run: python tools/patch_menu_v13.py
+
       - name: Generate test card PNGs
         shell: pwsh
         run: |
