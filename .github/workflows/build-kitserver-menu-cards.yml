@@ -36,6 +36,9 @@ jobs:
       - name: Patch V15 safe input arbitration
         run: python tools/patch_menu_v15.py
 
+      - name: Patch V16 animated card frames
+        run: python tools/patch_menu_v16.py
+
       - name: Generate test card PNGs
         shell: pwsh
         run: |
