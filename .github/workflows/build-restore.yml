@@ -1,0 +1,34 @@
+name: Build restore working PESMod
+
+on:
+  push:
+    branches:
+      - hotfix/restore-working-build
+  workflow_dispatch:
+
+jobs:
+  build-win32:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Win32
+        shell: pwsh
+        run: cmake -S . -B build -A Win32 -DGAME_DIR="Z:/__pesmod_no_deploy__"
+
+      - name: Build Release
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Stage package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item build\Release\PESMod.asi package\PESMod.asi
+          Copy-Item include\MinHook\lib\MinHook.x86.dll package\MinHook.x86.dll
+          Copy-Item PESMod.ini package\PESMod.ini
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PESMod-restore-working
+          path: package
