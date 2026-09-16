@@ -48,6 +48,9 @@ jobs:
       - name: Patch V19 align icon strip with menu
         run: python tools/patch_menu_v19.py
 
+      - name: Patch V20 clean carousel
+        run: python tools/patch_menu_v20.py
+
       - name: Generate PES2011 cards and icon strip PNGs
         shell: pwsh
         run: |
