@@ -33,8 +33,8 @@ jobs:
       - name: Patch V13 PES2011 animation
         run: python tools/patch_menu_v13.py
 
-      - name: Patch V14 ordered reverse navigation
-        run: python tools/patch_menu_v14.py
+      - name: Patch V15 safe input arbitration
+        run: python tools/patch_menu_v15.py
 
       - name: Generate test card PNGs
         shell: pwsh
