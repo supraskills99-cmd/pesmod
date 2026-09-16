@@ -21,6 +21,40 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Patch input polling for all PES controllers
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          p = Path(r"kitserver_module/menu_cards.cpp")
+          s = p.read_text(encoding="utf-8")
+          old = '''        const DWORD dir = table[DIRECTIONAL_PRESSED];
+                  const DWORD func = table[FUNCTIONAL];
+                  const DWORD dirEdge = dir & ~g_lastDirectional;
+                  const DWORD funcEdge = func & ~g_lastFunctional;
+                  g_lastDirectional = dir;
+                  g_lastFunctional = func;
+          '''
+          new = '''        // PES/Kitserver keeps one input slot per controller (0..7).
+                  // The previous build only watched controller 0, so keyboard/gamepad
+                  // navigation could move PES while our card stayed on PARTIDO.
+                  DWORD dir = 0;
+                  DWORD func = 0;
+                  for (int n = 0; n < 8; ++n)
+                  {
+                      dir |= table[DIRECTIONAL_PRESSED + n];
+                      func |= table[FUNCTIONAL + n];
+                  }
+                  const DWORD dirEdge = dir & ~g_lastDirectional;
+                  const DWORD funcEdge = func & ~g_lastFunctional;
+                  g_lastDirectional = dir;
+                  g_lastFunctional = func;
+          '''
+          if old not in s:
+              raise SystemExit("expected input block not found")
+          p.write_text(s.replace(old, new, 1), encoding="utf-8")
+          '@ | python -
+
       - name: Generate test card PNGs
         shell: pwsh
         run: |
