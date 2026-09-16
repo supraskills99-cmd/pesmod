@@ -27,6 +27,9 @@ jobs:
       - name: Patch V12 direct joystick fallback
         run: python tools/patch_menu_v12.py
 
+      - name: Fix V12 WinMM config types
+        run: python tools/patch_menu_v12_fix.py
+
       - name: Generate test card PNGs
         shell: pwsh
         run: |
