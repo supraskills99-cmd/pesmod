@@ -59,3 +59,6 @@ See `[main_menu_cards]` in `PESMod.ini`.
 `anchor_x` and `anchor_y` are screen-relative values, so the card should remain
 anchored correctly at different resolutions. The defaults target the selected
 column position in the supplied horizontal-menu mapping.
+
+The branch has a Win32 GitHub Actions build so each renderer change is compiled
+before handing the test package over for in-game testing.
