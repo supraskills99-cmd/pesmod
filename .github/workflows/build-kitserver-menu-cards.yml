@@ -39,11 +39,15 @@ jobs:
       - name: Patch V16 animated card frames
         run: python tools/patch_menu_v16.py
 
-      - name: Generate test card PNGs
+      - name: Patch V18 sliding icon strip
+        run: python tools/patch_menu_v18.py
+
+      - name: Generate PES2011 cards and icon strip PNGs
         shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check pillow
           python tools/generate_kitserver_menu_cards.py
+          python tools/generate_menu_icons_v18.py
 
       - name: Build Win32 Kitserver module
         shell: cmd
