@@ -1,0 +1,44 @@
+PES 6 ANIMATED MENU - SAFE KITSERVER TEST
+=========================================
+
+This version does NOT replace PESMod.asi and does NOT hook Direct3DCreate8 itself.
+It loads as a normal Kitserver module and registers with Kitserver's existing
+hk_D3D_Present callback chain.
+
+INSTALL
+-------
+1) Copy these files/folders into your PES 6 kitserver folder:
+
+   menucards.dll
+   menu_cards.ini
+   menu_cards\
+
+   Final layout:
+   PES6\kitserver\menucards.dll
+   PES6\kitserver\menu_cards.ini
+   PES6\kitserver\menu_cards\partido.png
+   ...
+
+2) Open PES6\kitserver\kload.cfg
+
+3) Increase DLL.num by 1 and add menucards.dll as the new LAST entry.
+
+   Example only (your last number may be different):
+
+   DLL.num = 13
+   DLL.12 = "kitserver\\menucards.dll"
+
+   Do NOT delete or reorder your existing Kitserver DLL lines.
+
+TEST
+----
+- Start PES 6 normally.
+- The card starts visible immediately.
+- LEFT/RIGHT changes the animated card in the same 11-option order as your
+  horizontal menu, so starting from PARTIDO both should move together.
+- F9: show/hide the animated overlay.
+- F10: reload menu_cards.ini and all PNG card images.
+
+If nothing appears, send kitserver\menu_cards.log.
+If PES fails to open, simply remove the menucards.dll line from kload.cfg;
+PESMod.asi is untouched by this test.
