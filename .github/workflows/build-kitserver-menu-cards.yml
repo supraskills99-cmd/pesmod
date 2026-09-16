@@ -54,11 +54,15 @@ jobs:
       - name: Patch V21 PES2011 synchronized transition
         run: python tools/patch_menu_v21.py
 
+      - name: Patch V22 PES2011 split tile reveal
+        run: python tools/patch_menu_v22.py
+
       - name: Generate PES2011 cards and icon strip PNGs
         shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check pillow
           python tools/generate_kitserver_menu_cards.py
+          python tools/verticalize_cards_v22.py
           python tools/generate_menu_icons_v18.py
 
       - name: Build Win32 Kitserver module
