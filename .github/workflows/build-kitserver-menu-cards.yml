@@ -21,8 +21,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Patch V5 menu input
+      - name: Patch V11 PES input capture
         run: python tools/patch_menu_v5.py
+
+      - name: Patch V12 direct joystick fallback
+        run: python tools/patch_menu_v12.py
 
       - name: Generate test card PNGs
         shell: pwsh
@@ -35,7 +38,7 @@ jobs:
         run: >-
           cl /nologo /std:c++17 /EHsc /O2 /MD /LD
           kitserver_module\menu_cards.cpp
-          /link /OUT:menucards.dll ole32.lib windowscodecs.lib user32.lib
+          /link /OUT:menucards.dll ole32.lib windowscodecs.lib user32.lib winmm.lib
 
       - name: Stage test package
         shell: pwsh
