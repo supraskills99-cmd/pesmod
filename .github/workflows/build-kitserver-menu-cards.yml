@@ -13,10 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch Kitserver 6 DirectX 8 headers
-        shell: pwsh
-        run: git clone --depth 1 https://github.com/kitserver/kitserver6.git thirdparty/kitserver6
-
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x86
@@ -36,7 +32,6 @@ jobs:
         run: >-
           cl /nologo /std:c++17 /EHsc /O2 /MD /LD
           kitserver_module\menu_cards.cpp
-          /I thirdparty\kitserver6\src\soft\dxsdk81\include
           /link /OUT:menucards.dll ole32.lib windowscodecs.lib user32.lib
 
       - name: Stage test package
