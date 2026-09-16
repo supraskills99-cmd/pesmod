@@ -51,6 +51,9 @@ jobs:
       - name: Patch V20 clean carousel
         run: python tools/patch_menu_v20.py
 
+      - name: Patch V21 PES2011 synchronized transition
+        run: python tools/patch_menu_v21.py
+
       - name: Generate PES2011 cards and icon strip PNGs
         shell: pwsh
         run: |
