@@ -13,6 +13,20 @@ if needle in s and "UP_PRESSED" not in s:
         1,
     )
 
+# PES6 menu cancel can arrive as TRIANGLE or CIRCLE depending on the
+# active keyboard/pad mapping. Keep both so returning to the main menu
+# is detected reliably.
+func_needle = "    constexpr DWORD CROSS_PRESSED = 0x01;\n    constexpr DWORD CIRCLE_PRESSED = 0x08;\n"
+if func_needle in s and "TRIANGLE_PRESSED" not in s:
+    s = s.replace(
+        func_needle,
+        "    constexpr DWORD CROSS_PRESSED = 0x01;\n"
+        "    constexpr DWORD TRIANGLE_PRESSED = 0x02;\n"
+        "    constexpr DWORD SQUARE_PRESSED = 0x04;\n"
+        "    constexpr DWORD CIRCLE_PRESSED = 0x08;\n",
+        1,
+    )
+
 # Track how deep we are after leaving the main menu. This lets us keep the
 # overlay hidden through nested screens and only restore it after enough
 # CANCEL actions return us to depth 0.
@@ -36,11 +50,9 @@ s, count = asset_pattern.subn(asset_replacement, s, count=1)
 if count != 1:
     raise SystemExit("main menu asset visibility block not found")
 
-# Replace input handling. PES6 default PC menu controls are effectively:
-#   UP/DOWN = move menu cursor
-#   X/ENTER = confirm
-#   D/ESC   = cancel
-# We keep Enter/Escape fallbacks and gamepad CROSS/CIRCLE support.
+# Replace input handling. The horizontal skin still navigates using UP/DOWN.
+# We keep a depth counter while hidden. Most importantly, CANCEL is accepted
+# from all common PES6 paths: keyboard D/Z/Esc/Backspace and pad TRIANGLE/CIRCLE.
 pattern = re.compile(r"    void HandleInput\(\)\n    \{.*?\n    \}\n\n    void DrawCard", re.S)
 replacement = r'''    void HandleInput()
     {
@@ -61,7 +73,6 @@ replacement = r'''    void HandleInput()
 
         bool keyboardNav = false;
 
-        // Navigation only exists while the main-menu card is visible.
         if (g_autoMainMenu && g_visible)
         {
             if (GetAsyncKeyState(VK_DOWN) & 1)
@@ -76,14 +87,13 @@ replacement = r'''    void HandleInput()
             }
         }
 
-        // Direct keyboard actions. This is intentionally independent of hk_Input,
-        // because PES6 consumes some menu keys through DirectInput.
         const bool confirmKeyboard =
             (GetAsyncKeyState('X') & 1) ||
             (GetAsyncKeyState(VK_RETURN) & 1) ||
             (GetAsyncKeyState(VK_SPACE) & 1);
         const bool cancelKeyboard =
             (GetAsyncKeyState('D') & 1) ||
+            (GetAsyncKeyState('Z') & 1) ||
             (GetAsyncKeyState(VK_ESCAPE) & 1) ||
             (GetAsyncKeyState(VK_BACK) & 1);
 
@@ -130,7 +140,6 @@ replacement = r'''    void HandleInput()
         if (confirmKeyboard) confirmAction();
         if (cancelKeyboard) cancelAction();
 
-        // Gamepad / PES input-table fallback.
         if (!g_getInputTable) return;
         DWORD* table = g_getInputTable();
         if (!table) return;
@@ -153,8 +162,16 @@ replacement = r'''    void HandleInput()
             else if (dirEdge & UP_PRESSED) TriggerIndex(g_index - 1);
         }
 
-        if (funcEdge & CROSS_PRESSED) confirmAction();
-        if (funcEdge & CIRCLE_PRESSED) cancelAction();
+        if (funcEdge & CROSS_PRESSED)
+        {
+            Log("pad confirm edge=%08lx", (unsigned long)funcEdge);
+            confirmAction();
+        }
+        if (funcEdge & (TRIANGLE_PRESSED | CIRCLE_PRESSED))
+        {
+            Log("pad cancel edge=%08lx", (unsigned long)funcEdge);
+            cancelAction();
+        }
     }
 
     void DrawCard'''
@@ -163,4 +180,4 @@ if count != 1:
     raise SystemExit("HandleInput block not found")
 
 p.write_text(s, encoding="utf-8")
-print("Patched menu_cards.cpp for V8")
+print("Patched menu_cards.cpp for V9")
