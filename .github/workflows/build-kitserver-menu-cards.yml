@@ -42,6 +42,9 @@ jobs:
       - name: Patch V18 sliding icon strip
         run: python tools/patch_menu_v18.py
 
+      - name: Fix V18 config types
+        run: python tools/patch_menu_v18_fix.py
+
       - name: Generate PES2011 cards and icon strip PNGs
         shell: pwsh
         run: |
