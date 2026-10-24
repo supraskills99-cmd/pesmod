@@ -683,6 +683,11 @@ extern FN_PanelNavUpdate_t           orig_PanelNavUpdate;
 extern FN_PanelRefresh_t             orig_PanelRefresh;
 extern FN_GetTeamName_t              orig_GetTeamName;
 extern FN_CrestResolve_t             orig_CrestResolve;
+// Native PES6 menu crest slot selectors. 0xB3C0E0 forwards to 0x863FF0;
+// 0xB3C0F0 maps custom-slot 0x1CA to blank-slot 0x6A.
+using FN_MenuCrestSlot_t = int (__cdecl*)(uint16_t teamId);
+extern FN_MenuCrestSlot_t orig_MenuCrestSlot;
+extern FN_MenuCrestSlot_t orig_MenuCrestFallbackSlot;
 // FUN_00b0f990 — club-selection badge render (ECX=teamId, EAX=nodeStruct). We
 // hook it with a naked thunk to draw teams/<ID>.png for custom teams.
 typedef void (*FN_BadgeRender_t)();
@@ -812,6 +817,8 @@ char*    __cdecl  hook_GetTeamName           (uint16_t teamId, int nameType, int
 // FUN_00b3beb0 hook — custom team crest from teams/<ID>.png.
 // See custom_team_loader.cpp.
 int      __cdecl  hook_CrestResolve          (int scratchId, uint16_t teamId, int p3, int p4);
+int      __cdecl  hook_MenuCrestSlot        (uint16_t teamId);
+int      __cdecl  hook_MenuCrestFallbackSlot(uint16_t teamId);
 
 // FUN_00b0f990 hook — custom club badge from teams/<ID>.png. The naked thunk is
 // what MinHook patches in; hook_BadgeRender_C is the body. See custom_team_loader.cpp.
