@@ -134,6 +134,57 @@ int __cdecl hook_CrestResolve(int scratchId, uint16_t teamId, int p3, int p4)
 }
 
 // -----------------------------------------------------------------------------
+// Menu/cup/ML crest cells — re-enable the real team crest load.
+//
+// In this PES6.exe, 0xB3C0E0 is a tail jump to the team->crest-slot resolver,
+// and is called only by 0xB233A9 and 0xB24CE6. Both callers explicitly replace
+// the 0x1CA custom slot with the 0x6A blank slot. The second one then selects
+// 0xB3BE20 (generic atlas image) instead of 0xB3BEB0 (team crest).
+//
+// 0xB3C0F0 makes the same substitution itself; its sole direct caller,
+// 0xB32B7F, similarly skips 0xB3BEB0 when the result is 0x6A/0x6B.
+//
+// For teams with a PNG, return a *marker*, NOT a texture/atlas index, which
+// bypasses the blank branching. These three callers use this value only for
+// comparisons and state/visibility; they pass the original team ID to
+// 0xB3BEB0, where hook_CrestResolve registers the actual 32x32 custom PNG.
+// Never pass this marker to the stock atlas loader.
+// -----------------------------------------------------------------------------
+namespace {
+constexpr int kCustomCrestPresentMarker = 0x1CB;
+
+bool HasCustomCrestPng(uint16_t teamId)
+{
+    if (teamId <= 0xCB || teamId == 0xFFFF)
+        return false;
+    wchar_t path[MAX_PATH];
+    _snwprintf_s(path, _TRUNCATE, L".\\teams\\%u.png",
+                 static_cast<unsigned>(teamId));
+    const DWORD attr = GetFileAttributesW(path);
+    return attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+} // namespace
+
+int __cdecl hook_MenuCrestSlot(uint16_t teamId)
+{
+    // 0xB3C0E0 is a 5-byte JMP stub: call its MinHook trampoline to retain
+    // the native slot logic for all other teams.
+    const int slot = orig_MenuCrestSlot ? orig_MenuCrestSlot(teamId) : 0x6A;
+    if (slot == 0x1CA && HasCustomCrestPng(teamId))
+        return kCustomCrestPresentMarker;
+    return slot;
+}
+
+int __cdecl hook_MenuCrestFallbackSlot(uint16_t teamId)
+{
+    const int slot = orig_MenuCrestFallbackSlot
+        ? orig_MenuCrestFallbackSlot(teamId) : 0x6A;
+    if (slot == 0x6A && HasCustomCrestPng(teamId))
+        return kCustomCrestPresentMarker;
+    return slot;
+}
+
+// -----------------------------------------------------------------------------
 // Team badge (club emblem) — teams/<ID>.png
 //
 // The club-selection badge render FUN_00b0f990(teamId /*ECX*/, nodeStruct /*EAX*/,
