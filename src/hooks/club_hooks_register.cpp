@@ -147,6 +147,8 @@ FN_GetTeamName_t orig_GetTeamName = nullptr;
 // Trampoline for FUN_00b3beb0 (CrestResolve) — hook_CrestResolve forwards
 // teams without a teams/<ID>.png through it.
 FN_CrestResolve_t orig_CrestResolve = nullptr;
+FN_MenuCrestSlot_t orig_MenuCrestSlot = nullptr;
+FN_MenuCrestSlot_t orig_MenuCrestFallbackSlot = nullptr;
 // Trampoline for FUN_00b0f990 (club badge render). The naked thunk tail-jmps
 // here for non-custom teams.
 FN_BadgeRender_t orig_BadgeRender = nullptr;
@@ -416,6 +418,18 @@ void ClubHooks::Register()
                  hook_CrestResolve,
                  orig_CrestResolve,
                  "CrestResolve");
+
+    // PES6's menu/competition crest rendering normally changes a custom
+    // crest slot (0x1CA) into a blank/default crest before CrestResolve is
+    // reached. Keep the custom branch active when teams/<ID>.png exists.
+    INSTALL_HOOK(0x00b3c0e0,
+                 hook_MenuCrestSlot,
+                 orig_MenuCrestSlot,
+                 "MenuCrestSlot");
+    INSTALL_HOOK(0x00b3c0f0,
+                 hook_MenuCrestFallbackSlot,
+                 orig_MenuCrestFallbackSlot,
+                 "MenuCrestFallbackSlot");
 
     // FUN_00b0f990 — club-selection badge render. Naked thunk draws
     // teams/<ID>.png for custom teams (else the white flag); stock falls through.
